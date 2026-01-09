@@ -1,6 +1,5 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
-	import MobileLayout from '$lib/components/MobileLayout.svelte';
 
 	// State
 	let videoElement;
@@ -58,6 +57,9 @@
 	let targetMode = $state('preloaded'); // 'preloaded' | 'custom' | 'freeform'
 	let selectedTemplate = $state('ipsc-classic');
 	let showTargetModeSelection = $state(false);
+	let isSetupComplete = $state(false); // Track if setup is complete
+	let isTemplateDropdownOpen = $state(false);
+	let actionBarExpanded = $state(false);
 	
 	// Template definitions
 	const templates = {
@@ -268,7 +270,6 @@
 	let showVisualizationControls = $state(false);
 	let showDiagnosticOverlay = $state(false);
 	let showDebugOverlay = $state(false); // Debug mode to show detection pixels
-	let drawerRef = null; // Reference to MobileLayout component
 
 	// Initialize camera
 	async function startCamera() {
@@ -287,6 +288,11 @@
 				await videoElement.play();
 				isStreaming = true;
 				startDetection();
+				
+				// Auto-start calibration if setup is complete and calibration is needed (unless freeform mode)
+				if (isSetupComplete && !targetBoundary && targetMode !== 'freeform') {
+					startCalibration();
+				}
 			}
 		} catch (error) {
 			console.error('Error accessing camera:', error);
@@ -1078,26 +1084,53 @@
 			clientY = event.clientY;
 		}
 
-		// Get wrapper element (parent of canvas)
+		// Get wrapper element (parent of canvas) which has the transform
 		const wrapper = canvasElement.parentElement;
-		if (!wrapper) return;
+		if (!wrapper || !canvasElement) return;
 		
 		const wrapperRect = wrapper.getBoundingClientRect();
 		const canvasRect = canvasElement.getBoundingClientRect();
 		
-		// Get click position relative to wrapper
-		const x = clientX - wrapperRect.left;
-		const y = clientY - wrapperRect.top;
+		// Get click position relative to wrapper (which has the transform)
+		const wrapperX = clientX - wrapperRect.left;
+		const wrapperY = clientY - wrapperRect.top;
 		
-		// Account for CSS zoom/pan transform: convert wrapper coords to canvas coords
-		const canvasX = (x - cameraPanX) / cameraZoom;
-		const canvasY = (y - cameraPanY) / cameraZoom;
+		// Calculate actual displayed canvas size (accounting for object-contain)
+		// Canvas has object-contain, so it maintains aspect ratio and may not fill wrapper
+		const videoAspect = canvasElement.width / canvasElement.height;
+		const wrapperAspect = wrapperRect.width / wrapperRect.height;
 		
-		// Convert to actual canvas pixel coordinates
-		const scaleX = canvasElement.width / canvasRect.width;
-		const scaleY = canvasElement.height / canvasRect.height;
-		const actualX = canvasX * scaleX;
-		const actualY = canvasY * scaleY;
+		let displayedWidth, displayedHeight, offsetX, offsetY;
+		
+		if (videoAspect > wrapperAspect) {
+			// Video is wider - fit to width
+			displayedWidth = wrapperRect.width;
+			displayedHeight = wrapperRect.width / videoAspect;
+			offsetX = 0;
+			offsetY = (wrapperRect.height - displayedHeight) / 2;
+		} else {
+			// Video is taller - fit to height
+			displayedHeight = wrapperRect.height;
+			displayedWidth = wrapperRect.height * videoAspect;
+			offsetX = (wrapperRect.width - displayedWidth) / 2;
+			offsetY = 0;
+		}
+		
+		// Adjust click coordinates for the actual displayed canvas area
+		const adjustedX = wrapperX - offsetX;
+		const adjustedY = wrapperY - offsetY;
+		
+		// Reverse the CSS transform: scale(zoom) translate(panX, panY)
+		// CSS transforms apply right-to-left: translate then scale
+		// To reverse: divide by zoom, then subtract pan
+		const untransformedX = (adjustedX / cameraZoom) - (cameraPanX / cameraZoom);
+		const untransformedY = (adjustedY / cameraZoom) - (cameraPanY / cameraZoom);
+		
+		// Convert from displayed canvas size to actual canvas pixel size
+		const scaleX = canvasElement.width / displayedWidth;
+		const scaleY = canvasElement.height / displayedHeight;
+		const actualX = untransformedX * scaleX;
+		const actualY = untransformedY * scaleY;
 
 		calibrationPoints = [...calibrationPoints, { x: actualX, y: actualY }];
 
@@ -1136,26 +1169,52 @@
 			clientY = event.clientY;
 		}
 
-		// Get wrapper element (parent of canvas)
+		// Get wrapper element (parent of canvas) which has the transform
 		const wrapper = canvasElement.parentElement;
 		if (!wrapper) return;
 		
 		const wrapperRect = wrapper.getBoundingClientRect();
 		const canvasRect = canvasElement.getBoundingClientRect();
 		
-		// Get click position relative to wrapper
-		const x = clientX - wrapperRect.left;
-		const y = clientY - wrapperRect.top;
+		// Get click position relative to wrapper (which has the transform)
+		const wrapperX = clientX - wrapperRect.left;
+		const wrapperY = clientY - wrapperRect.top;
 		
-		// Account for CSS zoom/pan transform: convert wrapper coords to canvas coords
-		const canvasX = (x - cameraPanX) / cameraZoom;
-		const canvasY = (y - cameraPanY) / cameraZoom;
+		// Calculate actual displayed canvas size (accounting for object-contain)
+		const videoAspect = canvasElement.width / canvasElement.height;
+		const wrapperAspect = wrapperRect.width / wrapperRect.height;
 		
-		// Convert to actual canvas pixel coordinates
-		const scaleX = canvasElement.width / canvasRect.width;
-		const scaleY = canvasElement.height / canvasRect.height;
-		const actualX = canvasX * scaleX;
-		const actualY = canvasY * scaleY;
+		let displayedWidth, displayedHeight, offsetX, offsetY;
+		
+		if (videoAspect > wrapperAspect) {
+			// Video is wider - fit to width
+			displayedWidth = wrapperRect.width;
+			displayedHeight = wrapperRect.width / videoAspect;
+			offsetX = 0;
+			offsetY = (wrapperRect.height - displayedHeight) / 2;
+		} else {
+			// Video is taller - fit to height
+			displayedHeight = wrapperRect.height;
+			displayedWidth = wrapperRect.height * videoAspect;
+			offsetX = (wrapperRect.width - displayedWidth) / 2;
+			offsetY = 0;
+		}
+		
+		// Adjust click coordinates for the actual displayed canvas area
+		const adjustedX = wrapperX - offsetX;
+		const adjustedY = wrapperY - offsetY;
+		
+		// Reverse the CSS transform: scale(zoom) translate(panX, panY)
+		// CSS transforms apply right-to-left: translate then scale
+		// To reverse: divide by zoom, then subtract pan
+		const untransformedX = (adjustedX / cameraZoom) - (cameraPanX / cameraZoom);
+		const untransformedY = (adjustedY / cameraZoom) - (cameraPanY / cameraZoom);
+		
+		// Convert from displayed canvas size to actual canvas pixel size
+		const scaleX = canvasElement.width / displayedWidth;
+		const scaleY = canvasElement.height / displayedHeight;
+		const actualX = untransformedX * scaleX;
+		const actualY = untransformedY * scaleY;
 
 		zoneCalibrationPoints = [...zoneCalibrationPoints, { x: actualX, y: actualY }];
 
@@ -1283,20 +1342,8 @@
 	}
 
 	// Drawer control helpers
-	function autoCloseDrawer() {
-		if (drawerRef) {
-			drawerRef.closeDrawer();
-		}
-	}
-
-	function autoOpenDrawer(state = 'partial') {
-		if (drawerRef) {
-			drawerRef.openDrawer(state);
-		}
-	}
 
 	function startCalibration() {
-		autoCloseDrawer(); // Close drawer for full camera view
 		calibrationMode = true;
 		calibrationPoints = [];
 	}
@@ -1581,7 +1628,6 @@
 	}
 
 	async function startDrill() {
-		autoCloseDrawer(); // Close drawer during drill
 		
 		// If starting a new session (no reps or session was completed), reset round counter
 		if (shotTimerSession.reps.length === 0 || 
@@ -1598,7 +1644,6 @@
 			currentRound = shotTimerConfig.roundCount;
 			shotTimerActive = false;
 			shotTimerPhase = 'idle';
-			autoOpenDrawer('full');
 			return;
 		}
 		
@@ -1716,7 +1761,6 @@
 			}
 			
 			// Open drawer to show results
-			autoOpenDrawer('full');
 			
 			return true; // Hit was consumed by timer
 		}
@@ -1916,8 +1960,7 @@
 	}
 
 	onMount(() => {
-		// Auto-start camera on mount
-		startCamera();
+		// Don't auto-start camera - let user start it manually
 	});
 
 	onDestroy(() => {
@@ -1926,13 +1969,228 @@
 </script>
 
 <svelte:head>
-	<title>Dry-Fire Laser Trainer (Spike)</title>
+	<title>Dry-Fire Trainer</title>
 </svelte:head>
 
-<MobileLayout bind:this={drawerRef}>
-	
-	<!-- Camera Feed (all layouts) -->
-	<div slot="camera" class="camera-feed">
+<div class="min-h-screen bg-background text-foreground flex flex-col">
+	<!-- Header -->
+	<header class="flex items-center justify-between px-4 py-3 border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-30">
+		<div class="flex items-center gap-3">
+			<div class="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
+				<span class="text-primary font-bold text-base">🎯</span>
+			</div>
+			<div>
+				<h1 class="font-semibold text-sm">Dry-Fire Trainer</h1>
+				<p class="text-xs text-muted-foreground">Laser Detection</p>
+			</div>
+		</div>
+		<div class="flex items-center gap-1">
+			<button class="p-2 hover:bg-secondary/50 rounded-lg transition-colors">
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+				</svg>
+			</button>
+			<button class="p-2 hover:bg-secondary/50 rounded-lg transition-colors">
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+				</svg>
+			</button>
+		</div>
+	</header>
+
+	<main class="flex-1 flex flex-col p-4 pb-36 space-y-4 max-w-7xl mx-auto w-full">
+		{#if !isSetupComplete}
+			<!-- Setup Mode -->
+			<div class="space-y-4 animate-fade-in">
+				<!-- Target Mode Selector -->
+				<div class="bg-card rounded-xl border border-border p-4 space-y-4">
+					<h2 class="font-semibold text-base">Select Target Mode</h2>
+					
+					<div class="space-y-2">
+						<!-- Pre-loaded Template -->
+						<button
+							onclick={() => targetMode = 'preloaded'}
+							class="w-full flex items-center gap-3 p-3 rounded-lg border transition-all duration-200 {targetMode === 'preloaded' ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-secondary/50 hover:bg-secondary text-foreground'}"
+						>
+							<div class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 {targetMode === 'preloaded' ? 'bg-primary/20' : 'bg-secondary'}">
+								<svg class="w-5 h-5 {targetMode === 'preloaded' ? 'text-primary' : 'text-muted-foreground'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+								</svg>
+							</div>
+							<div class="flex-1 text-left min-w-0">
+								<p class="font-medium text-sm">Pre-loaded Template</p>
+								<p class="text-xs text-muted-foreground">Quick Setup</p>
+							</div>
+							{#if targetMode === 'preloaded'}
+								<svg class="w-5 h-5 text-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+								</svg>
+							{/if}
+						</button>
+
+						<!-- Custom Target -->
+						<button
+							onclick={() => targetMode = 'custom'}
+							class="w-full flex items-center gap-3 p-3 rounded-lg border transition-all duration-200 {targetMode === 'custom' ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-secondary/50 hover:bg-secondary text-foreground'}"
+						>
+							<div class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 {targetMode === 'custom' ? 'bg-primary/20' : 'bg-secondary'}">
+								<svg class="w-5 h-5 {targetMode === 'custom' ? 'text-primary' : 'text-muted-foreground'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+								</svg>
+							</div>
+							<div class="flex-1 text-left min-w-0">
+								<p class="font-medium text-sm">Custom Target</p>
+								<p class="text-xs text-muted-foreground">Manual Zones</p>
+							</div>
+							{#if targetMode === 'custom'}
+								<svg class="w-5 h-5 text-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+								</svg>
+							{/if}
+						</button>
+
+						<!-- Free Training -->
+						<button
+							onclick={() => targetMode = 'freeform'}
+							class="w-full flex items-center gap-3 p-3 rounded-lg border transition-all duration-200 {targetMode === 'freeform' ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-secondary/50 hover:bg-secondary text-foreground'}"
+						>
+							<div class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 {targetMode === 'freeform' ? 'bg-primary/20' : 'bg-secondary'}">
+								<svg class="w-5 h-5 {targetMode === 'freeform' ? 'text-primary' : 'text-muted-foreground'}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+								</svg>
+							</div>
+							<div class="flex-1 text-left min-w-0">
+								<p class="font-medium text-sm">Free Training</p>
+								<p class="text-xs text-muted-foreground">No Zones</p>
+							</div>
+							{#if targetMode === 'freeform'}
+								<svg class="w-5 h-5 text-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+								</svg>
+							{/if}
+						</button>
+					</div>
+
+					{#if targetMode === 'preloaded'}
+						<!-- Template Selector -->
+						<div class="space-y-2 pt-2 border-t border-border">
+							<label class="text-xs text-muted-foreground font-medium">Select Template</label>
+							<button
+								onclick={() => isTemplateDropdownOpen = !isTemplateDropdownOpen}
+								class="w-full flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/50 hover:bg-secondary transition-colors"
+							>
+								<div class="text-left">
+									<p class="font-medium text-sm">{templates[selectedTemplate]?.name || 'Select template'}</p>
+									<p class="text-xs text-muted-foreground">{templates[selectedTemplate]?.size}, {templates[selectedTemplate]?.recommendedDistance}</p>
+								</div>
+								<svg class="w-5 h-5 text-muted-foreground transition-transform {isTemplateDropdownOpen ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+								</svg>
+							</button>
+
+							{#if isTemplateDropdownOpen}
+								<div class="bg-secondary rounded-lg border border-border overflow-hidden animate-fade-in">
+									{#each Object.entries(templates) as [id, template]}
+										{#if !template.grid}
+											<button
+												onclick={() => { selectedTemplate = id; isTemplateDropdownOpen = false; }}
+												class="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors border-b border-border/50 last:border-0 {selectedTemplate === id ? 'bg-primary/10' : ''}"
+											>
+												<div class="text-left">
+													<p class="font-medium text-sm">{template.name}</p>
+													<p class="text-xs text-muted-foreground">{template.size}, {template.recommendedDistance}</p>
+												</div>
+												{#if selectedTemplate === id}
+													<svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+													</svg>
+												{/if}
+											</button>
+										{/if}
+									{/each}
+								</div>
+							{/if}
+
+							<div class="flex items-start gap-2 p-3 bg-warning/10 rounded-lg border border-warning/20">
+								<span class="shrink-0 text-warning text-base">💡</span>
+								<span class="text-xs text-warning/90">Position camera {templates[selectedTemplate]?.recommendedDistance || '15-20 feet'} from target. Target should fill 30-50% of frame.</span>
+							</div>
+						</div>
+					{/if}
+
+					<button
+						onclick={async () => {
+							isSetupComplete = true;
+							showTargetModeSelection = false;
+							// Start camera if not already streaming
+							if (!isStreaming) {
+								await startCamera();
+							}
+							// Auto-start calibration if needed (unless freeform mode)
+							if (isStreaming && !targetBoundary && targetMode !== 'freeform') {
+								startCalibration();
+							}
+						}}
+						class="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg font-semibold transition-colors"
+					>
+						Continue
+					</button>
+
+					<p class="text-xs text-muted-foreground text-center pt-2">
+						You'll calibrate by tapping the 4 corners <span class="text-primary font-medium">clockwise</span>
+					</p>
+				</div>
+
+				<!-- Camera Preview (Setup Mode) -->
+				<div class="relative w-full bg-card rounded-xl overflow-hidden border border-border aspect-[4/3]">
+					<div class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-card via-background to-card">
+						{#if !isStreaming}
+							<div class="text-center space-y-4 p-8">
+								<div class="w-16 h-16 mx-auto rounded-full bg-secondary/50 flex items-center justify-center border-2 border-dashed border-muted-foreground/30">
+									<svg class="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+									</svg>
+								</div>
+								<div>
+									<p class="text-muted-foreground text-sm font-medium">Camera inactive</p>
+									<p class="text-muted-foreground/60 text-xs mt-1">Tap Start to begin</p>
+								</div>
+								<button
+									onclick={startCamera}
+									class="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-2 rounded-lg font-medium text-sm flex items-center gap-2 mx-auto"
+								>
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+									</svg>
+									Start
+								</button>
+							</div>
+						{:else}
+							<div class="absolute inset-0 flex items-center justify-center">
+								<div class="text-center space-y-3">
+									<div class="relative">
+										<div class="w-20 h-20 mx-auto rounded-full bg-primary/20 flex items-center justify-center border-2 border-primary/30">
+											<div class="w-3 h-3 rounded-full bg-primary pulse-active"></div>
+										</div>
+										<div class="absolute inset-0 flex items-center justify-center">
+											<div class="w-12 h-12 rounded-full border-2 border-primary/20 pulse-active"></div>
+										</div>
+									</div>
+									<p class="text-muted-foreground text-sm font-medium">Camera feed active</p>
+								</div>
+							</div>
+						{/if}
+					</div>
+				</div>
+			</div>
+		{:else}
+			<!-- Active Training Mode -->
+			<div class="space-y-4 animate-fade-in">
+				<!-- Camera Viewport -->
+				<div class="relative w-full bg-card rounded-xl overflow-hidden border border-border aspect-[4/3]">
+					<!-- Camera Feed -->
 		<div class="relative bg-black rounded-lg overflow-hidden shadow-lg h-full w-full">
 			<video
 				bind:this={videoElement}
@@ -1943,7 +2201,7 @@
 			></video>
 			<div 
 				class="canvas-wrapper"
-				style="transform: scale({cameraZoom}) translate({cameraPanX / cameraZoom}px, {cameraPanY / cameraZoom}px); transform-origin: 0 0; width: 100%; height: 100%; overflow: hidden;"
+				style="transform: scale({cameraZoom}) translate({cameraPanX}px, {cameraPanY}px); transform-origin: 0 0; width: 100%; height: 100%; overflow: hidden;"
 				onwheel={handleZoom}
 				ontouchstart={(e) => {
 					if (e.touches.length === 2) {
@@ -2031,2166 +2289,272 @@
 				</button>
 			{/if}
 			{#if !isStreaming}
-				<div class="absolute inset-0 flex items-center justify-center bg-gray-800">
-					<div class="text-center">
-						<p class="mb-4">Camera not active</p>
+				<div class="absolute inset-0 flex items-center justify-center bg-card">
+					<div class="text-center space-y-4 p-8">
+						<div class="w-16 h-16 mx-auto rounded-full bg-secondary/50 flex items-center justify-center border-2 border-dashed border-muted-foreground/30">
+							<svg class="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+							</svg>
+						</div>
+						<div>
+							<p class="text-muted-foreground text-sm font-medium">Camera inactive</p>
+							<p class="text-muted-foreground/60 text-xs mt-1">Tap Start to begin</p>
+						</div>
 						<button
 							onclick={startCamera}
-							class="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold"
+							class="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-2 rounded-lg font-medium text-sm flex items-center gap-2 mx-auto"
 						>
-							Start Camera
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+							</svg>
+							Start
 						</button>
 					</div>
 				</div>
 			{/if}
-		</div>
-	</div>
 	
-	<!-- Status Badges (mobile only) -->
-	<div slot="status-badges">
+			<!-- Camera Overlay Controls (when streaming) -->
+			{#if isStreaming && isSetupComplete}
+				<!-- Calibrated Badge -->
 		{#if targetBoundary}
-			<span class="status-badge success">Calibrated ✓</span>
-		{:else}
-			<span class="status-badge warning">Not Calibrated</span>
-		{/if}
-		
-		{#if shotTimerActive}
-			<span class="status-badge active">Timer: Active</span>
-		{/if}
-		
-		{#if hits.length > 0}
-			<span class="status-badge info">Hits: {hits.length}</span>
-		{/if}
+					<div class="absolute top-3 left-3 glass px-3 py-1.5 rounded-full flex items-center gap-2 text-xs border border-success/20">
+						<div class="w-2 h-2 rounded-full bg-success pulse-active"></div>
+						<span class="text-success font-medium">Calibrated</span>
 	</div>
-	
-	<!-- Floating Action Buttons (mobile only) -->
-	<div slot="fabs">
-		{#if !targetBoundary && isStreaming}
-			<button class="fab primary" onclick={startCalibration} title="Calibrate Target">
-				📏
-			</button>
 		{/if}
 		
-		{#if targetBoundary && !shotTimerActive && isStreaming}
-			<button class="fab secondary" onclick={() => { showShotTimer = true; autoOpenDrawer('full'); }} title="Shot Timer">
-				⏱️
+				<!-- Fullscreen Button -->
+				<button class="absolute top-3 right-3 glass border-0 hover:bg-secondary/50 p-2 rounded-lg transition-colors">
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+					</svg>
 			</button>
-		{/if}
-	</div>
 	
-	<!-- Quick Actions (mobile partial drawer) -->
-	<div slot="quick-actions">
-		<div class="quick-actions-grid">
+				<!-- Bottom Controls -->
+				<div class="absolute bottom-3 left-3 right-3 flex justify-center gap-2 z-10">
 			<button 
-				class="action-btn primary"
+						onclick={stopCamera}
+						class="glass border-0 backdrop-blur-xl shadow-lg px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-1.5 bg-destructive/20 hover:bg-destructive/30 text-destructive"
+					>
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10h6v4H9z" />
+						</svg>
+						Stop
+					</button>
+					{#if !calibrationMode}
+						<button
 				onclick={startCalibration}
-				disabled={!isStreaming || calibrationMode}
+							class="glass border-0 backdrop-blur-xl shadow-lg px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-1.5 bg-primary/20 hover:bg-primary/30 text-primary"
 			>
-				📏 Calibrate
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+							</svg>
+							Calibrate
 			</button>
-			
-			<button 
-				class="action-btn secondary"
-				onclick={clearCalibration}
-				disabled={!targetBoundary}
-			>
-				🗑️ Clear
-			</button>
-			
-			<button 
-				class="action-btn success"
-				onclick={() => { showShotTimer = true; autoOpenDrawer('full'); }}
-				disabled={!targetBoundary || !isStreaming}
-			>
-				⏱️ Timer
-			</button>
-			
-			<button 
-				class="action-btn info"
-				onclick={() => { showVisualizationControls = true; autoOpenDrawer('full'); }}
-			>
-				🔢 Sequence
-			</button>
-			
-			<button 
-				class="action-btn {showDiagnosticOverlay ? 'success' : 'secondary'}"
-				onclick={() => showDiagnosticOverlay = !showDiagnosticOverlay}
-			>
-				🎯 Diagnostic
-			</button>
-			
-			<button 
-				class="action-btn {showDebugOverlay ? 'success' : 'secondary'}"
-				onclick={() => showDebugOverlay = !showDebugOverlay}
-			>
-				🔍 Debug
-			</button>
-			
-			<button 
-				class="action-btn warning"
-				onclick={clearHits}
-				disabled={hits.length === 0}
-			>
-				❌ Clear Hits
-			</button>
-			
-			<button 
-				class="action-btn danger"
-				onclick={stopCamera}
-				disabled={!isStreaming}
-			>
-				🛑 Stop
-			</button>
+		{/if}
+	</div>
+			{/if}
 		</div>
 	</div>
-	
-	<!-- Full Controls (mobile full drawer & tablet sidebar) -->
-	<div slot="full-controls">
-		<div class="full-controls-container">
-			<!-- Header (mobile/tablet only) -->
-			<header class="mb-6 mobile-tablet-only">
-				<h1 class="text-2xl md:text-3xl font-bold text-center mb-2">
-					Dry-Fire Laser Trainer (Spike)
-				</h1>
-				<p class="text-sm text-gray-400 text-center">
-					Camera-based laser detection for dry-fire training
-				</p>
-			</header>
 
-			<!-- Target Mode Selection -->
-			{#if showTargetModeSelection || !targetBoundary}
-			<div class="bg-gray-800 rounded-lg p-6 mb-4">
-				<h2 class="text-xl font-semibold mb-4">Select Target Mode</h2>
-				<div class="space-y-4">
-					<div class="flex items-center gap-3">
-						<input
-							type="radio"
-							id="mode-preloaded"
-							name="targetMode"
-							value="preloaded"
-							checked={targetMode === 'preloaded'}
-							onchange={() => targetMode = 'preloaded'}
-							class="w-4 h-4"
-						/>
-						<label for="mode-preloaded" class="text-lg cursor-pointer">
-							Pre-loaded Template (Quick Setup)
-						</label>
-					</div>
-					<div class="flex items-center gap-3">
-						<input
-							type="radio"
-							id="mode-custom"
-							name="targetMode"
-							value="custom"
-							checked={targetMode === 'custom'}
-							onchange={() => targetMode = 'custom'}
-							class="w-4 h-4"
-						/>
-						<label for="mode-custom" class="text-lg cursor-pointer">
-							Custom Target (Manual Zones)
-						</label>
-					</div>
-					<div class="flex items-center gap-3">
-						<input
-							type="radio"
-							id="mode-freeform"
-							name="targetMode"
-							value="freeform"
-							checked={targetMode === 'freeform'}
-							onchange={() => targetMode = 'freeform'}
-							class="w-4 h-4"
-						/>
-						<label for="mode-freeform" class="text-lg cursor-pointer">
-							Free Training (No Zones)
-						</label>
-					</div>
-				</div>
-
-				{#if targetMode === 'preloaded'}
-					<div class="mt-4 pt-4 border-t border-gray-700">
-						<label for="template-select" class="block text-sm text-gray-400 mb-2">Select Template:</label>
-						<select
-							id="template-select"
-							value={selectedTemplate}
-							onchange={(e) => selectedTemplate = e.target.value}
-							class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-						>
-							{#each Object.entries(templates) as [id, template]}
-								<option value={id}>
-									{template.name} ({template.size}, {template.recommendedDistance})
-								</option>
-							{/each}
-						</select>
-						{#if templates[selectedTemplate]}
-							<p class="mt-2 text-sm text-gray-400">
-								💡 For {templates[selectedTemplate].name} ({templates[selectedTemplate].size}), position camera {templates[selectedTemplate].recommendedDistance} from target. Target should fill 30-50% of frame.
-							</p>
+				<!-- Status Pills -->
+				<div class="flex flex-wrap gap-2 justify-center">
+					<div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs {isStreaming ? 'bg-success/20 text-success border-success/30' : 'bg-secondary/50 text-foreground border-border'}">
+						{#if isStreaming}
+							<span class="w-2 h-2 rounded-full bg-success pulse-active shrink-0"></span>
 						{/if}
+						<span class="text-muted-foreground/80 font-medium">Status</span>
+						<span class="font-mono font-semibold">{isStreaming ? 'Active' : 'Inactive'}</span>
 					</div>
-				{/if}
-
-				<div class="mt-4 flex gap-3">
-					<button
-						onclick={() => {
-							showTargetModeSelection = false;
-							// Auto-start calibration for modes that need it
-							if (!targetBoundary && isStreaming) {
-								if (targetMode === 'preloaded') {
-									// Pre-loaded templates need calibration to load zones
-									startCalibration();
-								} else if (targetMode === 'custom') {
-									// Custom mode needs calibration for zone detection
-									startCalibration();
-								}
-								// Free training mode doesn't require calibration - can start immediately
-							}
-						}}
-						class="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-semibold"
-					>
-						Done
-					</button>
+					<div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs bg-secondary/50 text-foreground border-border">
+						<span class="text-muted-foreground/80 font-medium">Hits</span>
+						<span class="font-mono font-semibold">{hits.length}</span>
+					</div>
+					<div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs {targetBoundary ? 'bg-success/20 text-success border-success/30' : 'bg-warning/20 text-warning border-warning/30'}">
+						<span class="w-2 h-2 rounded-full {targetBoundary ? 'bg-success' : 'bg-warning'} shrink-0"></span>
+						<span class="text-muted-foreground/80 font-medium">Calibrated</span>
+						<span class="font-mono font-semibold">{targetBoundary ? 'Yes' : 'No'}</span>
+					</div>
+					<div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs {isStreaming ? 'bg-success/20 text-success border-success/30' : 'bg-secondary/50 text-foreground border-border'}">
+						{#if isStreaming}
+							<span class="w-2 h-2 rounded-full bg-success shrink-0"></span>
+						{/if}
+						<span class="text-muted-foreground/80 font-medium">Detection</span>
+						<span class="font-mono font-semibold">{isStreaming ? 'Active' : 'Off'}</span>
+					</div>
 				</div>
-				{#if targetMode === 'preloaded' && !targetBoundary}
-					<p class="mt-3 text-sm text-blue-400">
-						💡 After clicking Done, you'll be prompted to calibrate your target by tapping the 4 corners <strong>clockwise</strong> (top-left → top-right → bottom-right → bottom-left). Zones will automatically load after calibration.
-					</p>
-				{:else if targetMode === 'custom' && !targetBoundary}
-					<p class="mt-3 text-sm text-blue-400">
-						💡 After clicking Done, you'll be prompted to calibrate your target by tapping the 4 corners <strong>clockwise</strong> (top-left → top-right → bottom-right → bottom-left). Then use "Define Zones Visually" or "Zone Settings" to set up your scoring zones.
-					</p>
-				{:else if targetMode === 'freeform'}
-					<p class="mt-3 text-sm text-blue-400">
-						💡 Free Training mode logs all hits with coordinates. Calibration is optional - you can start training immediately, or calibrate to define a boundary.
-					</p>
-				{/if}
+
+				<!-- Hits List -->
+				<div class="bg-card rounded-xl border border-border p-4 min-h-[200px] flex flex-col">
+					{#if hits.length === 0}
+						<div class="flex-1 flex flex-col items-center justify-center text-center space-y-3 py-8">
+							<div class="w-16 h-16 rounded-full bg-secondary/50 flex items-center justify-center">
+								<svg class="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+								</svg>
+							</div>
+							<div>
+								<p class="text-muted-foreground text-sm font-medium">No hits detected yet</p>
+								<p class="text-muted-foreground/60 text-xs mt-1">Point your laser at the target</p>
+							</div>
+						</div>
+					{:else}
+						<div class="space-y-2">
+							<div class="flex items-center justify-between mb-3">
+								<h3 class="text-sm font-semibold">Hit History</h3>
+								<span class="text-xs text-muted-foreground">{hits.length} {hits.length === 1 ? 'hit' : 'hits'}</span>
+							</div>
+							<div class="space-y-1.5 max-h-[300px] overflow-y-auto">
+								{#each hits.slice().reverse() as hit (hit.id)}
+									<div class="flex items-center justify-between p-2 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors">
+										<div class="flex items-center gap-2">
+											<div class="w-2 h-2 rounded-full {hit.zone === 'A' ? 'bg-success' : hit.zone === 'C' ? 'bg-warning' : hit.zone === 'D' ? 'bg-destructive' : 'bg-muted-foreground'}"></div>
+											<span class="text-xs font-medium">Zone {hit.zone || 'Miss'}</span>
+											{#if hit.points !== undefined}
+												<span class="text-xs text-muted-foreground">({hit.points} pts)</span>
+											{/if}
+										</div>
+										<span class="text-xs text-muted-foreground">{new Date(hit.timestamp).toLocaleTimeString()}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+					{/if}
+				</div>
 			</div>
 		{/if}
+	</main>
 
+	<!-- Bottom Action Bar -->
+	{#if isSetupComplete}
+		<div class="fixed bottom-0 left-0 right-0 z-40 safe-area-pb">
+			<div class="glass border-t border-border transition-all duration-300 ease-out {actionBarExpanded ? 'pb-4' : 'pb-0'}">
+				<!-- Toggle Handle -->
+				<button
+					onclick={() => actionBarExpanded = !actionBarExpanded}
+					class="w-full py-2 flex items-center justify-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+				>
+					<svg class="w-5 h-5 transition-transform duration-300 {actionBarExpanded ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+					</svg>
+					<span class="text-xs font-medium">{actionBarExpanded ? 'Hide Controls' : 'More Controls'}</span>
+				</button>
 
-			<!-- Controls -->
-			<div class="flex flex-wrap gap-3 mb-4 justify-center">
-			{#if isStreaming}
-				<button
-					onclick={startCalibration}
-					disabled={calibrationMode}
-					class="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-				>
-					Calibrate Target
-				</button>
-				<button
-					onclick={clearCalibration}
-					disabled={!targetBoundary}
-					class="bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-				>
-					Clear Calibration
-				</button>
-				<button
-					onclick={startZoneCalibration}
-					disabled={!targetBoundary || zoneCalibrationMode !== null}
-					class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-				>
-					Define Zones Visually
-				</button>
-				{#if targetMode === 'custom'}
+				<!-- Main Quick Actions -->
+				<div class="px-4 pb-3 flex justify-center gap-3">
+					<button
+						onclick={startCalibration}
+						disabled={calibrationMode || !isStreaming}
+						class="flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all duration-200 active:scale-95 bg-primary/20 hover:bg-primary/30 text-primary border-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
+					>
+						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+						<span class="text-xs font-medium">Calibrate</span>
+					</button>
 					<button
 						onclick={() => showZoneSettings = !showZoneSettings}
-						class="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
+						class="flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all duration-200 active:scale-95 bg-secondary hover:bg-secondary/80 text-foreground border-border"
 					>
-						{showZoneSettings ? 'Hide' : 'Zone'} Settings
+						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+						</svg>
+						<span class="text-xs font-medium">Zones</span>
 					</button>
-				{/if}
-				<button
-					onclick={() => showTargetModeSelection = !showTargetModeSelection}
-					class="bg-indigo-600 hover:bg-indigo-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-				>
-					Target Mode
-				</button>
-				<button
-					onclick={() => showShotTimer = !showShotTimer}
-					class="bg-orange-600 hover:bg-orange-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-				>
-					Shot Timer
-				</button>
-				<button
-					onclick={() => showVisualizationControls = !showVisualizationControls}
-					class="bg-teal-600 hover:bg-teal-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-				>
-					Shot Sequence
-				</button>
-				<button
-					onclick={() => showDiagnosticOverlay = !showDiagnosticOverlay}
-					class="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-				>
-					{showDiagnosticOverlay ? 'Hide' : 'Show'} Diagnostic
-				</button>
-				<button
-					onclick={() => showDebugOverlay = !showDebugOverlay}
-					class="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-				>
-					{showDebugOverlay ? 'Hide' : 'Show'} Debug
-				</button>
-				<button
-					onclick={clearHits}
-					class="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-				>
-					Clear Hits
-				</button>
-				<button
-					onclick={stopCamera}
-					class="bg-gray-600 hover:bg-gray-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-				>
-					Stop Camera
-				</button>
-			{:else}
-				<button
-					onclick={startCamera}
-					class="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-				>
-					Start Camera
-				</button>
-			{/if}
-		</div>
-
-		<!-- Zone Settings Panel -->
-		{#if showZoneSettings}
-			<div class="bg-gray-800 rounded-lg p-4 mb-4">
-				<div class="flex items-center justify-between mb-4">
-					<h3 class="text-lg font-semibold">Custom Zone Settings</h3>
 					<button
-						onclick={resetZonesToDefaults}
-						class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg text-sm font-semibold"
+						onclick={() => showShotTimer = !showShotTimer}
+						class="flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all duration-200 active:scale-95 bg-warning/20 hover:bg-warning/30 text-warning border-warning/30"
 					>
-						Reset to Defaults
+						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+						<span class="text-xs font-medium">Timer</span>
+					</button>
+					<button
+						onclick={clearHits}
+						disabled={hits.length === 0}
+						class="flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all duration-200 active:scale-95 bg-destructive/20 hover:bg-destructive/30 text-destructive border-destructive/30 disabled:opacity-50 disabled:cursor-not-allowed"
+					>
+						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+						</svg>
+						<span class="text-xs font-medium">Clear</span>
 					</button>
 				</div>
-				<div class="space-y-6">
-					{#each ['A', 'C', 'D'] as zoneName}
-						{@const zone = zones[zoneName]}
-						<div class="border border-gray-700 rounded-lg p-4">
-							<div class="flex items-center gap-3 mb-3">
-								<div
-									class="w-6 h-6 rounded border-2"
-									style="background-color: {zone.color}; border-color: {zone.color};"
-								></div>
-								<h4 class="text-md font-semibold" style="color: {zone.color}">
-									{zoneName}-zone ({zone.points} pts)
-								</h4>
-							</div>
-							<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-								<!-- Points -->
-								<div>
-									<label for="points-{zoneName}" class="block text-sm text-gray-400 mb-1">Points</label>
-									<input
-										id="points-{zoneName}"
-										type="number"
-										min="0"
-										max="10"
-										value={zone.points}
-										oninput={(e) => updateZonePoints(zoneName, e.target.value)}
-										class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-									/>
-								</div>
-								<!-- X-axis bounds -->
-								<div>
-									<div class="block text-sm text-gray-400 mb-1">
-										X-axis: {zone.bounds.x[0].toFixed(2)} - {zone.bounds.x[1].toFixed(2)}
-									</div>
-									<div class="space-y-2">
-										<div>
-											<label for="x-min-{zoneName}" class="text-xs text-gray-500">Min X:</label>
-											<input
-												id="x-min-{zoneName}"
-												type="range"
-												min="0"
-												max="1"
-												step="0.01"
-												value={zone.bounds.x[0]}
-												oninput={(e) => updateZoneBounds(zoneName, 'x', 0, e.target.value)}
-												class="w-full"
-											/>
-										</div>
-										<div>
-											<label for="x-max-{zoneName}" class="text-xs text-gray-500">Max X:</label>
-											<input
-												id="x-max-{zoneName}"
-												type="range"
-												min="0"
-												max="1"
-												step="0.01"
-												value={zone.bounds.x[1]}
-												oninput={(e) => updateZoneBounds(zoneName, 'x', 1, e.target.value)}
-												class="w-full"
-											/>
-										</div>
-									</div>
-								</div>
-								<!-- Y-axis bounds -->
-								<div>
-									<div class="block text-sm text-gray-400 mb-1">
-										Y-axis: {zone.bounds.y[0].toFixed(2)} - {zone.bounds.y[1].toFixed(2)}
-									</div>
-									<div class="space-y-2">
-										<div>
-											<label for="y-min-{zoneName}" class="text-xs text-gray-500">Min Y:</label>
-											<input
-												id="y-min-{zoneName}"
-												type="range"
-												min="0"
-												max="1"
-												step="0.01"
-												value={zone.bounds.y[0]}
-												oninput={(e) => updateZoneBounds(zoneName, 'y', 0, e.target.value)}
-												class="w-full"
-											/>
-										</div>
-										<div>
-											<label for="y-max-{zoneName}" class="text-xs text-gray-500">Max Y:</label>
-											<input
-												id="y-max-{zoneName}"
-												type="range"
-												min="0"
-												max="1"
-												step="0.01"
-												value={zone.bounds.y[1]}
-												oninput={(e) => updateZoneBounds(zoneName, 'y', 1, e.target.value)}
-												class="w-full"
-											/>
-										</div>
-									</div>
-								</div>
-								<!-- Zone preview info -->
-								<div class="text-xs text-gray-400">
-									<p>Zone covers:</p>
-									<p>
-										{((zone.bounds.x[1] - zone.bounds.x[0]) * 100).toFixed(0)}% width ×{' '}
-										{((zone.bounds.y[1] - zone.bounds.y[0]) * 100).toFixed(0)}% height
-									</p>
-								</div>
-							</div>
-						</div>
-					{/each}
-				</div>
-				<p class="text-xs text-gray-400 mt-4">
-					💡 Tip: Zones are checked from innermost (A) to outermost (D). Make sure A-zone is inside C-zone,
-					and C-zone is inside D-zone for best results.
-				</p>
-			</div>
-		{/if}
 
-		<!-- Diagnostic Overlay Control -->
-		<div class="bg-gray-800 rounded-lg p-4 mb-4">
-			<div class="flex items-center justify-between">
-				<div>
-					<h3 class="text-lg font-semibold mb-1">Diagnostic Target Overlay</h3>
-					<p class="text-sm text-gray-400">
-						Show diagnostic pie chart overlay to identify shooting errors
-					</p>
-				</div>
-				<label class="relative inline-flex items-center cursor-pointer">
-					<input
-						type="checkbox"
-						bind:checked={showDiagnosticOverlay}
-						class="sr-only peer"
-					/>
-					<div class="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-				</label>
-			</div>
-			<p class="text-xs text-gray-500 mt-2">
-				💡 The overlay shows common shooting errors based on shot placement. Works with any target or just tape on the wall.
-			</p>
-		</div>
-
-		<!-- Shot Sequence Visualization Panel -->
-		{#if showVisualizationControls}
-			<div class="bg-gray-800 rounded-lg p-4 mb-4">
-				<h3 class="text-lg font-semibold mb-4">Shot Sequence Visualization</h3>
-				
-				<div class="space-y-4">
-					<!-- Toggle Controls -->
-					<div class="flex items-center gap-3">
-						<input
-							id="show-shot-numbers"
-							type="checkbox"
-							checked={visualizationState.showShotNumbers}
-							onchange={(e) => {
-								visualizationState.showShotNumbers = e.target.checked;
-								visualizationState = { ...visualizationState };
-							}}
-							class="w-5 h-5"
-						/>
-						<label for="show-shot-numbers" class="text-gray-300 cursor-pointer">
-							Show Shot Numbers
-						</label>
-					</div>
-					
-					<div class="flex items-center gap-3">
-						<input
-							id="show-sequence-lines"
-							type="checkbox"
-							checked={visualizationState.showSequenceLines}
-							onchange={(e) => {
-								visualizationState.showSequenceLines = e.target.checked;
-								visualizationState = { ...visualizationState };
-							}}
-							class="w-5 h-5"
-						/>
-						<label for="show-sequence-lines" class="text-gray-300 cursor-pointer">
-							Show Sequence Lines
-						</label>
-					</div>
-					
-					<!-- Line Color Picker -->
-					<div class="flex items-center gap-3">
-						<label for="line-color" class="text-gray-300">Line Color:</label>
-						<input
-							id="line-color"
-							type="color"
-							value={visualizationState.lineColor}
-							oninput={(e) => {
-								visualizationState.lineColor = e.target.value;
-								visualizationState = { ...visualizationState };
-							}}
-							class="w-16 h-8 border border-gray-600 rounded cursor-pointer"
-						/>
-					</div>
-					
-					<!-- Replay Mode Controls -->
-					{#if hits.length > 0}
-						<div class="pt-4 border-t border-gray-700">
-							<label for="replay-slider" class="block text-gray-300 mb-2">
-								Replay Mode:
-							</label>
-							<input
-								id="replay-slider"
-								type="range"
-								min="0"
-								max={hits.length}
-								value={visualizationState.currentReplayShot}
-								oninput={(e) => {
-									const val = parseInt(e.target.value);
-									visualizationState.currentReplayShot = val;
-									visualizationState.showAllShots = val === 0;
-									visualizationState = { ...visualizationState };
-								}}
-								class="w-full"
-							/>
-							<div class="text-center text-sm text-gray-400 mt-1">
-								{visualizationState.currentReplayShot === 0 
-									? 'All Shots' 
-									: `Shot ${visualizationState.currentReplayShot} of ${hits.length}`}
-							</div>
-						</div>
-					{/if}
-					
-					<!-- Shot Group Analysis -->
-					{#if hits.length >= 2}
-						{@const grouping = calculateShotGrouping(hits)}
-						{#if grouping}
-							<div class="pt-4 border-t border-gray-700">
-								<h4 class="text-md font-semibold mb-3 text-gray-300">Shot Group Analysis</h4>
-								<div class="space-y-2">
-									<div class="flex justify-between text-sm">
-										<span class="text-gray-400">Group Size (avg):</span>
-										<span class="text-gray-200 font-semibold">{grouping.groupSize}</span>
-									</div>
-									<div class="flex justify-between text-sm">
-										<span class="text-gray-400">Max Spread:</span>
-										<span class="text-gray-200 font-semibold">{grouping.maxSpread}px</span>
-									</div>
-									<div class="flex justify-between text-sm">
-										<span class="text-gray-400">Total Shots:</span>
-										<span class="text-gray-200 font-semibold">{hits.length}</span>
-									</div>
-								</div>
-							</div>
-						{/if}
-					{/if}
-					
-					<!-- Export Button -->
-					{#if hits.length > 0}
-						<button
-							onclick={exportShotPattern}
-							class="w-full bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg font-semibold text-sm"
-						>
-							📸 Export Shot Pattern
-						</button>
-					{/if}
-				</div>
-			</div>
-		{/if}
-
-		<!-- Shot Timer Panel -->
-		{#if showShotTimer}
-			<div class="bg-gray-800 rounded-lg p-4 mb-4">
-				<h3 class="text-lg font-semibold mb-4">Shot Timer</h3>
-				
-				{#if !shotTimerActive && shotTimerPhase === 'idle'}
-					<!-- Timer Controls -->
-					<div class="space-y-4">
-						<!-- Random Delay Settings -->
-						<div>
-							<div class="block text-sm text-gray-400 mb-2">Random Delay (seconds):</div>
-							<div class="flex items-center gap-3">
-								<input
-									id="delay-min"
-									type="number"
-									min="1"
-									max="10"
-									value={shotTimerConfig.randomDelayMin / 1000}
-									oninput={(e) => {
-										const val = parseFloat(e.target.value) * 1000;
-										if (!isNaN(val) && val > 0 && val <= shotTimerConfig.randomDelayMax) {
-											shotTimerConfig.randomDelayMin = val;
-											shotTimerConfig = { ...shotTimerConfig };
-										}
-									}}
-									class="w-20 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-								/>
-								<span class="text-gray-400">to</span>
-								<input
-									id="delay-max"
-									type="number"
-									min="1"
-									max="10"
-									value={shotTimerConfig.randomDelayMax / 1000}
-									oninput={(e) => {
-										const val = parseFloat(e.target.value) * 1000;
-										if (!isNaN(val) && val > 0 && val >= shotTimerConfig.randomDelayMin) {
-											shotTimerConfig.randomDelayMax = val;
-											shotTimerConfig = { ...shotTimerConfig };
-										}
-									}}
-									class="w-20 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-								/>
-							</div>
-							<p class="text-xs text-gray-500 mt-1">Timer will beep randomly between these times</p>
-						</div>
-						
-						<!-- Volume Control -->
-						<div>
-							<label for="beep-volume" class="block text-sm text-gray-400 mb-2">
-								Beep Volume: {Math.round(shotTimerConfig.beepVolume * 100)}%
-							</label>
-							<input
-								id="beep-volume"
-								type="range"
-								min="0"
-								max="100"
-								value={shotTimerConfig.beepVolume * 100}
-								oninput={(e) => {
-									shotTimerConfig.beepVolume = e.target.value / 100;
-									shotTimerConfig = { ...shotTimerConfig };
-								}}
-								class="w-full"
-							/>
-						</div>
-						
-						<!-- Auto Next Round Settings -->
-						<div class="border-t border-gray-700 pt-4 mt-4">
-							<div class="flex items-center gap-3 mb-4">
-								<input
-									id="auto-next-round"
-									type="checkbox"
-									bind:checked={shotTimerConfig.autoNextRound}
-									class="w-5 h-5"
-								/>
-								<label for="auto-next-round" class="text-sm font-semibold text-gray-300">
-									Enable Automatic Next Round
-								</label>
-							</div>
-							
-							{#if shotTimerConfig.autoNextRound}
-								<div class="space-y-3 ml-8">
-									<!-- Round Count -->
-									<div>
-										<label for="round-count" class="block text-sm text-gray-400 mb-2">
-											Number of Rounds: {shotTimerConfig.roundCount}
-										</label>
-										<input
-											id="round-count"
-											type="number"
-											min="1"
-											max="100"
-											value={shotTimerConfig.roundCount}
-											oninput={(e) => {
-												const val = parseInt(e.target.value);
-												if (!isNaN(val) && val > 0 && val <= 100) {
-													shotTimerConfig.roundCount = val;
-													shotTimerConfig = { ...shotTimerConfig };
-												}
-											}}
-											class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-										/>
-									</div>
-									
-									<!-- Reset Duration -->
-									<div>
-										<label for="reset-duration" class="block text-sm text-gray-400 mb-2">
-											Reset Duration: {(shotTimerConfig.resetDuration / 1000).toFixed(1)}s
-										</label>
-										<input
-											id="reset-duration"
-											type="range"
-											min="1"
-											max="10"
-											step="0.5"
-											value={shotTimerConfig.resetDuration / 1000}
-											oninput={(e) => {
-												const val = parseFloat(e.target.value) * 1000;
-												if (!isNaN(val) && val >= 1000 && val <= 10000) {
-													shotTimerConfig.resetDuration = val;
-													shotTimerConfig = { ...shotTimerConfig };
-												}
-											}}
-											class="w-full"
-										/>
-										<p class="text-xs text-gray-500 mt-1">Time between rounds before next drill starts</p>
-									</div>
-								</div>
-							{/if}
-						</div>
-						
-						<!-- Round Counter Display -->
-						{#if shotTimerConfig.autoNextRound && currentRound > 0}
-							<div class="mt-4 pt-4 border-t border-gray-700">
-								<p class="text-sm text-gray-400 text-center">
-									Round {currentRound} of {shotTimerConfig.roundCount}
-								</p>
-							</div>
-						{/if}
-						
-						<!-- Start Button -->
-						<button
-							onclick={shotTimerSession.reps.length === 0 ? startSession : startDrill}
-							disabled={shotTimerActive}
-							class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-6 py-4 rounded-lg font-semibold text-lg"
-						>
-							I'm Ready - Start Drill
-						</button>
-						
-						{#if shotTimerSession.reps.length > 0}
-							<div class="mt-4 pt-4 border-t border-gray-700">
-								<p class="text-sm text-gray-400 mb-2">
-									Session: {shotTimerSession.reps.length} rep{shotTimerSession.reps.length !== 1 ? 's' : ''} completed
-								</p>
-								<button
-									onclick={() => showSessionStats = !showSessionStats}
-									class="w-full bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg font-semibold text-sm"
-								>
-									{showSessionStats ? 'Hide' : 'View'} Session Stats
-								</button>
-							</div>
-						{/if}
-					</div>
-				{:else if shotTimerPhase === 'waiting'}
-					<!-- Waiting for beep -->
-					<div class="text-center py-8">
-						{#if shotTimerConfig.autoNextRound && currentRound > 0}
-							<div class="text-sm text-gray-400 mb-2">Round {currentRound} of {shotTimerConfig.roundCount}</div>
-						{/if}
-						<div class="inline-block w-3 h-3 bg-yellow-500 rounded-full animate-pulse mb-4"></div>
-						<p class="text-lg font-semibold mb-4">Get ready... Timer will beep soon</p>
-						<button
-							onclick={cancelDrill}
-							class="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-lg font-semibold"
-						>
-							Cancel Drill
-						</button>
-					</div>
-				{:else if shotTimerPhase === 'active'}
-					<!-- Timer active -->
-					{@const _ = timerDisplayUpdate} <!-- Trigger reactivity -->
-					<div class="text-center py-8 border-2 border-green-500 rounded-lg">
-						{#if shotTimerConfig.autoNextRound && currentRound > 0}
-							<div class="text-sm text-gray-400 mb-2">Round {currentRound} of {shotTimerConfig.roundCount}</div>
-						{/if}
-						<div class="text-5xl font-bold font-mono text-green-500 mb-4">
-							{formatTime(getCurrentElapsed())}s
-						</div>
-						<p class="text-xl font-semibold mb-4">⏱️ TIMER ACTIVE - SHOOT!</p>
-						<button
-							onclick={cancelDrill}
-							class="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-lg font-semibold"
-						>
-							Cancel
-						</button>
-					</div>
-				{:else if shotTimerPhase === 'complete'}
-					<!-- Rep complete -->
-					{@const lastRep = shotTimerSession.reps[shotTimerSession.reps.length - 1]}
-					<div class="space-y-4">
-						{#if shotTimerConfig.autoNextRound && currentRound > 0}
-							<div class="text-center mb-2">
-								<div class="text-sm text-gray-400">Round {currentRound} of {shotTimerConfig.roundCount}</div>
-								{#if currentRound >= shotTimerConfig.roundCount}
-									<div class="text-lg font-semibold text-green-500 mt-2">Session Complete!</div>
-								{/if}
-							</div>
-						{/if}
-						<div class="text-center py-4">
-							<div class="text-sm text-gray-400 mb-2">Draw Time:</div>
-							<div class="text-4xl font-bold font-mono text-green-500 mb-4">
-								{formatTime(lastRep.drawTime)}s
-							</div>
-							<div class="flex items-center justify-center gap-4 text-lg">
-								<span style="color: {lastRep.hit.zoneColor}; font-weight: 600;">
-									{lastRep.hit.zone}
-								</span>
-								{#if lastRep.hit.points !== null}
-									<span class="text-yellow-500 font-semibold">+{lastRep.hit.points} pts</span>
-								{/if}
-							</div>
-						</div>
-						
-						{#if shotTimerConfig.autoNextRound && currentRound < shotTimerConfig.roundCount && autoNextCountdown !== null}
-							<div class="bg-blue-900/30 border border-blue-500 rounded-lg p-4 text-center">
-								<div class="text-sm text-gray-400 mb-2">Next round starting in:</div>
-								<div class="text-3xl font-bold font-mono text-blue-400">
-									{(autoNextCountdown / 1000).toFixed(1)}s
-								</div>
-							</div>
-						{/if}
-						
-						<div class="flex gap-3">
-							{#if !shotTimerConfig.autoNextRound || currentRound >= shotTimerConfig.roundCount}
-								<button
-									onclick={nextRep}
-									class="flex-1 bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold"
-									disabled={shotTimerConfig.autoNextRound && currentRound >= shotTimerConfig.roundCount}
-								>
-									Next Rep
-								</button>
-							{/if}
+				<!-- Expanded Controls -->
+				{#if actionBarExpanded}
+					<div class="px-4 pt-3 border-t border-border/50 animate-fade-in">
+						<div class="grid grid-cols-4 gap-3 max-w-md mx-auto">
 							<button
-								onclick={() => {
-									showSessionStats = true;
-									shotTimerPhase = 'idle';
-									if (shotTimerAutoNextTimeout) {
-										clearTimeout(shotTimerAutoNextTimeout);
-										shotTimerAutoNextTimeout = null;
-									}
-									autoNextCountdown = null;
-									// Reset round counter if session was completed
-									if (shotTimerConfig.autoNextRound && currentRound >= shotTimerConfig.roundCount) {
-										currentRound = 0;
-									}
-								}}
-								class="flex-1 bg-gray-600 hover:bg-gray-700 px-6 py-3 rounded-lg font-semibold"
+								onclick={clearCalibration}
+								disabled={!targetBoundary}
+								class="flex flex-col items-center gap-1.5 rounded-xl border p-2.5 transition-all duration-200 active:scale-95 bg-secondary hover:bg-secondary/80 text-foreground border-border disabled:opacity-50 disabled:cursor-not-allowed"
 							>
-								View Stats
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+								</svg>
+								<span class="text-[10px] font-medium">Reset Cal</span>
+							</button>
+							<button
+								onclick={() => { isSetupComplete = false; }}
+								class="flex flex-col items-center gap-1.5 rounded-xl border p-2.5 transition-all duration-200 active:scale-95 bg-secondary hover:bg-secondary/80 text-foreground border-border"
+							>
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+								</svg>
+								<span class="text-[10px] font-medium">Target</span>
+							</button>
+							<button
+								onclick={() => showVisualizationControls = !showVisualizationControls}
+								class="flex flex-col items-center gap-1.5 rounded-xl border p-2.5 transition-all duration-200 active:scale-95 bg-secondary hover:bg-secondary/80 text-foreground border-border"
+							>
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+								</svg>
+								<span class="text-[10px] font-medium">Sequence</span>
+							</button>
+							<button
+								onclick={() => {}}
+								class="flex flex-col items-center gap-1.5 rounded-xl border p-2.5 transition-all duration-200 active:scale-95 bg-secondary hover:bg-secondary/80 text-foreground border-border"
+							>
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+								</svg>
+								<span class="text-[10px] font-medium">Settings</span>
+							</button>
+						</div>
+
+						<!-- Debug Section -->
+						<div class="mt-4 pt-3 border-t border-border/50 flex justify-center gap-3">
+							<button
+								onclick={() => showDiagnosticOverlay = !showDiagnosticOverlay}
+								class="text-muted-foreground hover:text-foreground text-sm flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-secondary/50 transition-colors"
+							>
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+								</svg>
+								Diagnostic
+							</button>
+							<button
+								onclick={() => showDebugOverlay = !showDebugOverlay}
+								class="text-muted-foreground hover:text-foreground text-sm flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-secondary/50 transition-colors"
+							>
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+								</svg>
+								Debug
 							</button>
 						</div>
 					</div>
 				{/if}
 			</div>
-		{/if}
-
-		<!-- Session Statistics -->
-		{#if showSessionStats && shotTimerSession.reps.length > 0}
-			<div class="bg-gray-800 rounded-lg p-6 mb-4">
-				<h3 class="text-xl font-semibold mb-4">Draw Timer Session</h3>
-				
-				<!-- Session Stats -->
-				<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-					<div class="bg-gray-700 rounded-lg p-4 text-center">
-						<div class="text-sm text-gray-400 mb-1">Reps Completed</div>
-						<div class="text-2xl font-bold font-mono">{shotTimerSession.reps.length}</div>
-					</div>
-					<div class="bg-gray-700 rounded-lg p-4 text-center">
-						<div class="text-sm text-gray-400 mb-1">Average Time</div>
-						<div class="text-2xl font-bold font-mono">{formatTime(calculateAverage())}s</div>
-					</div>
-					<div class="bg-gray-700 rounded-lg p-4 text-center">
-						<div class="text-sm text-gray-400 mb-1">Best Time</div>
-						<div class="text-2xl font-bold font-mono text-green-500">{formatTime(calculateBest())}s</div>
-					</div>
-					<div class="bg-gray-700 rounded-lg p-4 text-center">
-						<div class="text-sm text-gray-400 mb-1">Worst Time</div>
-						<div class="text-2xl font-bold font-mono text-red-500">{formatTime(calculateWorst())}s</div>
-					</div>
-				</div>
-				
-				<!-- Accuracy Breakdown -->
-				{#if calculateAccuracyByZone().length > 0}
-					<div class="mb-6">
-						<h4 class="text-lg font-semibold mb-3">Accuracy</h4>
-						<div class="space-y-2">
-							{#each calculateAccuracyByZone() as zone}
-								<div class="flex justify-between items-center py-2 border-b border-gray-700">
-									<span style="color: {zone.color}; font-weight: 600;">{zone.name}</span>
-									<span class="text-gray-300">
-										{zone.count}/{shotTimerSession.reps.length} ({zone.percentage}%)
-									</span>
-								</div>
-							{/each}
-						</div>
-					</div>
-				{/if}
-				
-				<!-- Individual Reps List -->
-				<div class="mb-6">
-					<h4 class="text-lg font-semibold mb-3">Individual Reps</h4>
-					<div class="overflow-x-auto">
-						<table class="w-full text-sm">
-							<thead>
-								<tr class="border-b border-gray-700">
-									<th class="text-left py-2 text-gray-400">#</th>
-									<th class="text-left py-2 text-gray-400">Time</th>
-									<th class="text-left py-2 text-gray-400">Zone</th>
-									<th class="text-left py-2 text-gray-400">Points</th>
-								</tr>
-							</thead>
-							<tbody>
-								{#each shotTimerSession.reps as rep, index}
-									<tr class="border-b border-gray-700">
-										<td class="py-2 text-gray-300">{index + 1}</td>
-										<td class="py-2 text-gray-300 font-mono">{formatTime(rep.drawTime)}s</td>
-										<td class="py-2" style="color: {rep.hit.zoneColor}; font-weight: 600;">{rep.hit.zone}</td>
-										<td class="py-2 text-gray-300">{rep.hit.points !== null ? `+${rep.hit.points}` : '-'}</td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
-					</div>
-				</div>
-				
-				<!-- Session Actions -->
-				<div class="flex gap-3">
-					<button
-						onclick={() => {
-							showSessionStats = false;
-							shotTimerCooldownUntil = null; // Reset cooldown
-							startDrill();
-						}}
-						class="flex-1 bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold"
-					>
-						Continue Session
-					</button>
-					<button
-						onclick={() => {
-							shotTimerSession = { reps: [], startedAt: null };
-							showSessionStats = false;
-							shotTimerPhase = 'idle';
-						}}
-						class="flex-1 bg-gray-600 hover:bg-gray-700 px-6 py-3 rounded-lg font-semibold"
-					>
-						End Session
-					</button>
-				</div>
-			</div>
-		{/if}
-
-		<!-- Status -->
-		<div class="bg-gray-800 rounded-lg p-4 mb-4">
-			<div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-				<div>
-					<span class="text-gray-400">Status:</span>
-					<span class="ml-2 font-semibold">{isStreaming ? 'Active' : 'Inactive'}</span>
-				</div>
-				<div>
-					<span class="text-gray-400">Hits Detected:</span>
-					<span class="ml-2 font-semibold">{hits.length}</span>
-				</div>
-				<div>
-					<span class="text-gray-400">Target Calibrated:</span>
-					<span class="ml-2 font-semibold">{targetBoundary ? 'Yes' : 'No'}</span>
-				</div>
-				<div>
-					<span class="text-gray-400">Detection:</span>
-					<span class="ml-2 font-semibold">{detectionActive ? 'Active' : 'Inactive'}</span>
-				</div>
-			</div>
 		</div>
-
-		<!-- Score Display -->
-		{#if hits.length > 0}
-			{@const score = calculateScore()}
-			<div class="bg-gray-800 rounded-lg p-4 mb-4">
-				{#if targetMode === 'freeform'}
-					<h2 class="text-xl font-semibold mb-3">
-						Total Hits: {hits.length}
-					</h2>
-					{#if score.averagePosition}
-						<p class="text-sm text-gray-400">
-							Average position: x={score.averagePosition.x.toFixed(0)}, y={score.averagePosition.y.toFixed(0)}
-						</p>
-					{/if}
-				{:else if targetMode === 'preloaded' && templates[selectedTemplate]?.grid}
-					<h2 class="text-xl font-semibold mb-3">
-						Total Hits: {hits.length}
-					</h2>
-					{#if score.cellCounts}
-						<div class="text-sm">
-							<p class="text-gray-400 mb-2">Cell Accuracy:</p>
-							<div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-								{#each Object.entries(score.cellCounts).slice(0, 8) as [cell, count]}
-									<div>
-										<span class="text-gray-400">{cell}:</span>
-										<span class="ml-2 font-semibold">{count} hit{count !== 1 ? 's' : ''}</span>
-									</div>
-								{/each}
-							</div>
-						</div>
-					{/if}
-				{:else}
-					<h2 class="text-xl font-semibold mb-3">
-						Total Score: {score.total} pts ({hits.length} hit{hits.length !== 1 ? 's' : ''})
-					</h2>
-					{#if score.breakdown}
-						<div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-							<div>
-								<span class="text-gray-400">A-zone:</span>
-								<span class="ml-2 font-semibold" style="color: {zones.A?.color || '#4ade80'}">
-									{score.breakdown.A.count} hit{score.breakdown.A.count !== 1 ? 's' : ''} ({score.breakdown.A.points} pts)
-								</span>
-							</div>
-							<div>
-								<span class="text-gray-400">C-zone:</span>
-								<span class="ml-2 font-semibold" style="color: {zones.C?.color || '#fbbf24'}">
-									{score.breakdown.C.count} hit{score.breakdown.C.count !== 1 ? 's' : ''} ({score.breakdown.C.points} pts)
-								</span>
-							</div>
-							<div>
-								<span class="text-gray-400">D-zone:</span>
-								<span class="ml-2 font-semibold" style="color: {zones.D?.color || '#f87171'}">
-									{score.breakdown.D.count} hit{score.breakdown.D.count !== 1 ? 's' : ''} ({score.breakdown.D.points} pts)
-								</span>
-							</div>
-							<div>
-								<span class="text-gray-400">Misses:</span>
-								<span class="ml-2 font-semibold text-gray-400">
-									{score.breakdown.Miss.count} ({score.breakdown.Miss.points} pts)
-								</span>
-							</div>
-						</div>
-					{/if}
-				{/if}
-			</div>
 		{/if}
-
-		<!-- Hit Log -->
-		<div class="bg-gray-800 rounded-lg p-4">
-			<h2 class="text-xl font-semibold mb-3">Hits Detected: {hits.length}</h2>
-			{#if hits.length === 0}
-				<p class="text-gray-400 text-sm">No hits detected yet. Point your laser at the target.</p>
-			{:else}
-				<div class="space-y-2 max-h-64 overflow-y-auto">
-					{#each hits.slice().reverse() as hit (hit.id)}
-						<div
-							class="flex items-center justify-between p-2 bg-gray-700 rounded text-sm"
-						>
-							<div class="flex items-center gap-3">
-								<div
-									class="w-4 h-4 rounded-full border-2"
-									style="background-color: {hit.color === 'red' ? 'rgba(255,0,0,0.5)' : 'rgba(0,255,0,0.5)'}; border-color: {hit.color === 'red' ? '#ff0000' : '#00ff00'};"
-								></div>
-								<span>
-									{#if targetMode === 'freeform'}
-										Hit: x={hit.x.toFixed(0)}, y={hit.y.toFixed(0)} @ {formatTimestamp(hit.timestamp)}
-									{:else if targetMode === 'preloaded' && templates[selectedTemplate]?.grid}
-										{#if hit.zone && hit.zone !== 'Miss'}
-											<span style="color: {hit.zoneColor || '#3b82f6'}; font-weight: 600;">
-												{hit.zone}:
-											</span>
-										{:else}
-											<span style="color: #9ca3af; font-weight: 600;">Miss:</span>
-										{/if}
-										{' '}x={hit.x.toFixed(0)}, y={hit.y.toFixed(0)} @ {formatTimestamp(hit.timestamp)}
-									{:else}
-										{#if hit.zone && hit.zone !== 'Miss' && hit.zone !== 'Hit'}
-											<span style="color: {hit.zoneColor || getZoneColor(hit.zone)}; font-weight: 600;">
-												{hit.zone}-zone:
-											</span>
-										{:else if hit.zone === 'Hit'}
-											<span style="color: {hit.zoneColor || '#3b82f6'}; font-weight: 600;">Hit:</span>
-										{:else}
-											<span style="color: #9ca3af; font-weight: 600;">Miss:</span>
-										{/if}
-										{' '}x={hit.x.toFixed(0)}, y={hit.y.toFixed(0)} @ {formatTimestamp(hit.timestamp)}
-										{#if hit.points !== undefined && hit.points !== null}
-											{' '}<span style="color: {hit.zoneColor || getZoneColor(hit.zone)};">(+{hit.points}pts)</span>
-										{/if}
-									{/if}
-								</span>
-							</div>
-							<span class="text-gray-400 text-xs">{getRelativeTime(hit.timestamp)}</span>
-						</div>
-					{/each}
-				</div>
-			{/if}
-		</div>
-
-			<!-- Instructions -->
-			<div class="mt-6 bg-blue-900/30 border border-blue-700 rounded-lg p-4 text-sm">
-				<h3 class="font-semibold mb-2">Instructions:</h3>
-				<ul class="list-disc list-inside space-y-1 text-gray-300">
-					<li>Grant camera permissions when prompted</li>
-					<li>Point your laser training cartridge at a target</li>
-					<li>Red and green lasers are automatically detected</li>
-					<li>Calibrate target boundaries by tapping 4 corners <strong>clockwise</strong>: top-left → top-right → bottom-right → bottom-left</li>
-					<li>Hits are logged with coordinates and timestamps</li>
-				</ul>
-			</div>
-		</div>
 	</div>
-	
-	<!-- Desktop Layout (unchanged) -->
-	<div slot="desktop">
-		<div class="min-h-screen bg-gray-900 text-white p-4">
-			<div class="max-w-6xl mx-auto">
-				<!-- Header -->
-				<header class="mb-6">
-					<h1 class="text-2xl md:text-3xl font-bold text-center mb-2">
-						Dry-Fire Laser Trainer (Spike)
-					</h1>
-					<p class="text-sm text-gray-400 text-center">
-						Camera-based laser detection for dry-fire training
-					</p>
-				</header>
-
-				<!-- Target Mode Selection -->
-				{#if showTargetModeSelection || !targetBoundary}
-					<div class="bg-gray-800 rounded-lg p-6 mb-4">
-						<h2 class="text-xl font-semibold mb-4">Select Target Mode</h2>
-						<div class="space-y-4">
-							<div class="flex items-center gap-3">
-								<input
-									type="radio"
-									id="mode-preloaded-desktop"
-									name="targetMode-desktop"
-									value="preloaded"
-									checked={targetMode === 'preloaded'}
-									onchange={() => targetMode = 'preloaded'}
-									class="w-4 h-4"
-								/>
-								<label for="mode-preloaded-desktop" class="text-lg cursor-pointer">
-									Pre-loaded Template (Quick Setup)
-								</label>
-							</div>
-							<div class="flex items-center gap-3">
-								<input
-									type="radio"
-									id="mode-custom-desktop"
-									name="targetMode-desktop"
-									value="custom"
-									checked={targetMode === 'custom'}
-									onchange={() => targetMode = 'custom'}
-									class="w-4 h-4"
-								/>
-								<label for="mode-custom-desktop" class="text-lg cursor-pointer">
-									Custom Target (Manual Zones)
-								</label>
-							</div>
-							<div class="flex items-center gap-3">
-								<input
-									type="radio"
-									id="mode-freeform-desktop"
-									name="targetMode-desktop"
-									value="freeform"
-									checked={targetMode === 'freeform'}
-									onchange={() => targetMode = 'freeform'}
-									class="w-4 h-4"
-								/>
-								<label for="mode-freeform-desktop" class="text-lg cursor-pointer">
-									Free Training (No Zones)
-								</label>
-							</div>
-						</div>
-
-						{#if targetMode === 'preloaded'}
-							<div class="mt-4 pt-4 border-t border-gray-700">
-								<label for="template-select-desktop" class="block text-sm text-gray-400 mb-2">Select Template:</label>
-								<select
-									id="template-select-desktop"
-									value={selectedTemplate}
-									onchange={(e) => selectedTemplate = e.target.value}
-									class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-								>
-									{#each Object.entries(templates) as [id, template]}
-										<option value={id}>
-											{template.name} ({template.size}, {template.recommendedDistance})
-										</option>
-									{/each}
-								</select>
-								{#if templates[selectedTemplate]}
-									<p class="mt-2 text-sm text-gray-400">
-										💡 For {templates[selectedTemplate].name} ({templates[selectedTemplate].size}), position camera {templates[selectedTemplate].recommendedDistance} from target. Target should fill 30-50% of frame.
-									</p>
-								{/if}
-							</div>
-						{/if}
-
-						<div class="mt-4 flex gap-3">
-							<button
-								onclick={() => {
-									showTargetModeSelection = false;
-									if (!targetBoundary && isStreaming) {
-										if (targetMode === 'preloaded') {
-											startCalibration();
-										} else if (targetMode === 'custom') {
-											startCalibration();
-										}
-									}
-								}}
-								class="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-semibold"
-							>
-								Done
-							</button>
-						</div>
-						{#if targetMode === 'preloaded' && !targetBoundary}
-							<p class="mt-3 text-sm text-blue-400">
-								💡 After clicking Done, you'll be prompted to calibrate your target by tapping the 4 corners <strong>clockwise</strong> (top-left → top-right → bottom-right → bottom-left). Zones will automatically load after calibration.
-							</p>
-						{:else if targetMode === 'custom' && !targetBoundary}
-							<p class="mt-3 text-sm text-blue-400">
-								💡 After clicking Done, you'll be prompted to calibrate your target by tapping the 4 corners <strong>clockwise</strong> (top-left → top-right → bottom-right → bottom-left). Then use "Define Zones Visually" or "Zone Settings" to set up your scoring zones.
-							</p>
-						{:else if targetMode === 'freeform'}
-							<p class="mt-3 text-sm text-blue-400">
-								💡 Free Training mode logs all hits with coordinates. Calibration is optional - you can start training immediately, or calibrate to define a boundary.
-							</p>
-						{/if}
-					</div>
-				{/if}
-
-				<!-- Video Container -->
-				<div class="relative bg-black rounded-lg overflow-hidden mb-4 shadow-lg">
-					<video
-						bind:this={videoElement}
-						autoplay
-						playsinline
-						muted
-						class="w-full h-auto max-h-[60vh] object-contain hidden"
-					></video>
-					<canvas
-						bind:this={canvasElement}
-						class="w-full h-auto max-h-[60vh] object-contain"
-						style="touch-action: none; display: block;"
-					></canvas>
-					{#if calibrationMode}
-						<div
-							class="absolute inset-0 cursor-crosshair z-10"
-							onclick={handleCanvasClick}
-							ontouchstart={handleCanvasClick}
-							ontouchend={(e) => {
-								// Prevent click event from firing after touch
-								e.preventDefault();
-							}}
-							onkeydown={(e) => e.key === 'Enter' && handleCanvasClick(e)}
-							role="button"
-							tabindex="0"
-							style="touch-action: none;"
-						></div>
-						<div
-							class="absolute top-4 left-1/2 transform -translate-x-1/2 bg-yellow-500 text-black px-4 py-2 rounded font-semibold text-center max-w-[90%]"
-						>
-							{#if calibrationPoints.length === 0}
-								Tap corners CLOCKWISE: Start with top-left corner
-							{:else if calibrationPoints.length === 1}
-								Tap top-right corner (clockwise)
-							{:else if calibrationPoints.length === 2}
-								Tap bottom-right corner (clockwise)
-							{:else if calibrationPoints.length === 3}
-								Tap bottom-left corner (clockwise) - last one!
-							{/if}
-						</div>
-					{/if}
-					{#if zoneCalibrationMode}
-						<div
-							class="absolute inset-0 cursor-crosshair z-10"
-							onclick={handleCanvasClick}
-							ontouchstart={handleCanvasClick}
-							ontouchend={(e) => {
-								// Prevent click event from firing after touch
-								e.preventDefault();
-							}}
-							onkeydown={(e) => e.key === 'Enter' && handleCanvasClick(e)}
-							role="button"
-							tabindex="0"
-							style="touch-action: none;"
-						></div>
-						<div
-							class="absolute top-4 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded font-semibold text-center max-w-[90%]"
-							style="background-color: {zones[zoneCalibrationMode].color}; color: #000;"
-						>
-							{#if zoneCalibrationPoints.length === 0}
-								Define {zoneCalibrationMode}-zone: Tap corners CLOCKWISE (start top-left)
-							{:else if zoneCalibrationPoints.length === 1}
-								{zoneCalibrationMode}-zone: Tap top-right corner (clockwise)
-							{:else if zoneCalibrationPoints.length === 2}
-								{zoneCalibrationMode}-zone: Tap bottom-right corner (clockwise)
-							{:else if zoneCalibrationPoints.length === 3}
-								{zoneCalibrationMode}-zone: Tap bottom-left corner (clockwise) - last one!
-							{/if}
-						</div>
-						<button
-							onclick={cancelZoneCalibration}
-							class="absolute top-4 right-4 bg-red-600 hover:bg-red-700 px-4 py-2 rounded font-semibold z-20"
-						>
-							Cancel
-						</button>
-					{/if}
-					{#if !isStreaming}
-						<div class="absolute inset-0 flex items-center justify-center bg-gray-800">
-							<div class="text-center">
-								<p class="mb-4">Camera not active</p>
-								<button
-									onclick={startCamera}
-									class="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold"
-								>
-									Start Camera
-								</button>
-							</div>
-						</div>
-					{/if}
-				</div>
-
-				<!-- Controls -->
-				<div class="flex flex-wrap gap-3 mb-4 justify-center">
-					{#if isStreaming}
-						<button
-							onclick={startCalibration}
-							disabled={calibrationMode}
-							class="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-						>
-							Calibrate Target
-						</button>
-						<button
-							onclick={clearCalibration}
-							disabled={!targetBoundary}
-							class="bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-						>
-							Clear Calibration
-						</button>
-						<button
-							onclick={startZoneCalibration}
-							disabled={!targetBoundary || zoneCalibrationMode !== null}
-							class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-						>
-							Define Zones Visually
-						</button>
-						{#if targetMode === 'custom'}
-							<button
-								onclick={() => showZoneSettings = !showZoneSettings}
-								class="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-							>
-								{showZoneSettings ? 'Hide' : 'Zone'} Settings
-							</button>
-						{/if}
-						<button
-							onclick={() => showTargetModeSelection = !showTargetModeSelection}
-							class="bg-indigo-600 hover:bg-indigo-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-						>
-							Target Mode
-						</button>
-						<button
-							onclick={() => showShotTimer = !showShotTimer}
-							class="bg-orange-600 hover:bg-orange-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-						>
-							Shot Timer
-						</button>
-						<button
-							onclick={() => showVisualizationControls = !showVisualizationControls}
-							class="bg-teal-600 hover:bg-teal-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-						>
-							Shot Sequence
-						</button>
-						<button
-							onclick={() => showDiagnosticOverlay = !showDiagnosticOverlay}
-							class="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-						>
-							{showDiagnosticOverlay ? 'Hide' : 'Show'} Diagnostic
-						</button>
-						<button
-							onclick={() => showDebugOverlay = !showDebugOverlay}
-							class="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-						>
-							{showDebugOverlay ? 'Hide' : 'Show'} Debug
-						</button>
-						<button
-							onclick={clearHits}
-							class="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-						>
-							Clear Hits
-						</button>
-						<button
-							onclick={stopCamera}
-							class="bg-gray-600 hover:bg-gray-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-						>
-							Stop Camera
-						</button>
-					{:else}
-						<button
-							onclick={startCamera}
-							class="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
-						>
-							Start Camera
-						</button>
-					{/if}
-				</div>
-
-				<!-- Zone Settings Panel -->
-				{#if showZoneSettings}
-					<div class="bg-gray-800 rounded-lg p-4 mb-4">
-						<div class="flex items-center justify-between mb-4">
-							<h3 class="text-lg font-semibold">Custom Zone Settings</h3>
-							<button
-								onclick={resetZonesToDefaults}
-								class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg text-sm font-semibold"
-							>
-								Reset to Defaults
-							</button>
-						</div>
-						<div class="space-y-6">
-							{#each ['A', 'C', 'D'] as zoneName}
-								{@const zone = zones[zoneName]}
-								<div class="border border-gray-700 rounded-lg p-4">
-									<div class="flex items-center gap-3 mb-3">
-										<div
-											class="w-6 h-6 rounded border-2"
-											style="background-color: {zone.color}; border-color: {zone.color};"
-										></div>
-										<h4 class="text-md font-semibold" style="color: {zone.color}">
-											{zoneName}-zone ({zone.points} pts)
-										</h4>
-									</div>
-									<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-										<!-- Points -->
-										<div>
-											<label for="points-{zoneName}-desktop" class="block text-sm text-gray-400 mb-1">Points</label>
-											<input
-												id="points-{zoneName}-desktop"
-												type="number"
-												min="0"
-												max="10"
-												value={zone.points}
-												oninput={(e) => updateZonePoints(zoneName, e.target.value)}
-												class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-											/>
-										</div>
-										<!-- X-axis bounds -->
-										<div>
-											<div class="block text-sm text-gray-400 mb-1">
-												X-axis: {zone.bounds.x[0].toFixed(2)} - {zone.bounds.x[1].toFixed(2)}
-											</div>
-											<div class="space-y-2">
-												<div>
-													<label for="x-min-{zoneName}-desktop" class="text-xs text-gray-500">Min X:</label>
-													<input
-														id="x-min-{zoneName}-desktop"
-														type="range"
-														min="0"
-														max="1"
-														step="0.01"
-														value={zone.bounds.x[0]}
-														oninput={(e) => updateZoneBounds(zoneName, 'x', 0, e.target.value)}
-														class="w-full"
-													/>
-												</div>
-												<div>
-													<label for="x-max-{zoneName}-desktop" class="text-xs text-gray-500">Max X:</label>
-													<input
-														id="x-max-{zoneName}-desktop"
-														type="range"
-														min="0"
-														max="1"
-														step="0.01"
-														value={zone.bounds.x[1]}
-														oninput={(e) => updateZoneBounds(zoneName, 'x', 1, e.target.value)}
-														class="w-full"
-													/>
-												</div>
-											</div>
-										</div>
-										<!-- Y-axis bounds -->
-										<div>
-											<div class="block text-sm text-gray-400 mb-1">
-												Y-axis: {zone.bounds.y[0].toFixed(2)} - {zone.bounds.y[1].toFixed(2)}
-											</div>
-											<div class="space-y-2">
-												<div>
-													<label for="y-min-{zoneName}-desktop" class="text-xs text-gray-500">Min Y:</label>
-													<input
-														id="y-min-{zoneName}-desktop"
-														type="range"
-														min="0"
-														max="1"
-														step="0.01"
-														value={zone.bounds.y[0]}
-														oninput={(e) => updateZoneBounds(zoneName, 'y', 0, e.target.value)}
-														class="w-full"
-													/>
-												</div>
-												<div>
-													<label for="y-max-{zoneName}-desktop" class="text-xs text-gray-500">Max Y:</label>
-													<input
-														id="y-max-{zoneName}-desktop"
-														type="range"
-														min="0"
-														max="1"
-														step="0.01"
-														value={zone.bounds.y[1]}
-														oninput={(e) => updateZoneBounds(zoneName, 'y', 1, e.target.value)}
-														class="w-full"
-													/>
-												</div>
-											</div>
-										</div>
-										<!-- Zone preview info -->
-										<div class="text-xs text-gray-400">
-											<p>Zone covers:</p>
-											<p>
-												{((zone.bounds.x[1] - zone.bounds.x[0]) * 100).toFixed(0)}% width ×{' '}
-												{((zone.bounds.y[1] - zone.bounds.y[0]) * 100).toFixed(0)}% height
-											</p>
-										</div>
-									</div>
-								</div>
-							{/each}
-						</div>
-						<p class="text-xs text-gray-400 mt-4">
-							💡 Tip: Zones are checked from innermost (A) to outermost (D). Make sure A-zone is inside C-zone,
-							and C-zone is inside D-zone for best results.
-						</p>
-					</div>
-				{/if}
-
-				<!-- Shot Sequence Visualization Panel -->
-				{#if showVisualizationControls}
-					<div class="bg-gray-800 rounded-lg p-4 mb-4">
-						<h3 class="text-lg font-semibold mb-4">Shot Sequence Visualization</h3>
-						
-						<div class="space-y-4">
-							<!-- Toggle Controls -->
-							<div class="flex items-center gap-3">
-								<input
-									id="show-shot-numbers-desktop"
-									type="checkbox"
-									checked={visualizationState.showShotNumbers}
-									onchange={(e) => {
-										visualizationState.showShotNumbers = e.target.checked;
-										visualizationState = { ...visualizationState };
-									}}
-									class="w-5 h-5"
-								/>
-								<label for="show-shot-numbers-desktop" class="text-gray-300 cursor-pointer">
-									Show Shot Numbers
-								</label>
-							</div>
-							
-							<div class="flex items-center gap-3">
-								<input
-									id="show-sequence-lines-desktop"
-									type="checkbox"
-									checked={visualizationState.showSequenceLines}
-									onchange={(e) => {
-										visualizationState.showSequenceLines = e.target.checked;
-										visualizationState = { ...visualizationState };
-									}}
-									class="w-5 h-5"
-								/>
-								<label for="show-sequence-lines-desktop" class="text-gray-300 cursor-pointer">
-									Show Sequence Lines
-								</label>
-							</div>
-							
-							<!-- Line Color Picker -->
-							<div class="flex items-center gap-3">
-								<label for="line-color-desktop" class="text-gray-300">Line Color:</label>
-								<input
-									id="line-color-desktop"
-									type="color"
-									value={visualizationState.lineColor}
-									oninput={(e) => {
-										visualizationState.lineColor = e.target.value;
-										visualizationState = { ...visualizationState };
-									}}
-									class="w-16 h-8 border border-gray-600 rounded cursor-pointer"
-								/>
-							</div>
-							
-							<!-- Replay Mode Controls -->
-							{#if hits.length > 0}
-								<div class="pt-4 border-t border-gray-700">
-									<label for="replay-slider-desktop" class="block text-gray-300 mb-2">
-										Replay Mode:
-									</label>
-									<input
-										id="replay-slider-desktop"
-										type="range"
-										min="0"
-										max={hits.length}
-										value={visualizationState.currentReplayShot}
-										oninput={(e) => {
-											const val = parseInt(e.target.value);
-											visualizationState.currentReplayShot = val;
-											visualizationState.showAllShots = val === 0;
-											visualizationState = { ...visualizationState };
-										}}
-										class="w-full"
-									/>
-									<div class="text-center text-sm text-gray-400 mt-1">
-										{visualizationState.currentReplayShot === 0 
-											? 'All Shots' 
-											: `Shot ${visualizationState.currentReplayShot} of ${hits.length}`}
-									</div>
-								</div>
-							{/if}
-							
-							<!-- Shot Group Analysis -->
-							{#if hits.length >= 2}
-								{@const grouping = calculateShotGrouping(hits)}
-								{#if grouping}
-									<div class="pt-4 border-t border-gray-700">
-										<h4 class="text-md font-semibold mb-3 text-gray-300">Shot Group Analysis</h4>
-										<div class="space-y-2">
-											<div class="flex justify-between text-sm">
-												<span class="text-gray-400">Group Size (avg):</span>
-												<span class="text-gray-200 font-semibold">{grouping.groupSize}</span>
-											</div>
-											<div class="flex justify-between text-sm">
-												<span class="text-gray-400">Max Spread:</span>
-												<span class="text-gray-200 font-semibold">{grouping.maxSpread}px</span>
-											</div>
-											<div class="flex justify-between text-sm">
-												<span class="text-gray-400">Total Shots:</span>
-												<span class="text-gray-200 font-semibold">{hits.length}</span>
-											</div>
-										</div>
-									</div>
-								{/if}
-							{/if}
-							
-							<!-- Export Button -->
-							{#if hits.length > 0}
-								<button
-									onclick={exportShotPattern}
-									class="w-full bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg font-semibold text-sm"
-								>
-									📸 Export Shot Pattern
-								</button>
-							{/if}
-						</div>
-					</div>
-				{/if}
-
-				<!-- Shot Timer Panel -->
-				{#if showShotTimer}
-					<div class="bg-gray-800 rounded-lg p-4 mb-4">
-						<h3 class="text-lg font-semibold mb-4">Shot Timer</h3>
-						
-						{#if !shotTimerActive && shotTimerPhase === 'idle'}
-							<!-- Timer Controls -->
-							<div class="space-y-4">
-								<!-- Random Delay Settings -->
-								<div>
-									<div class="block text-sm text-gray-400 mb-2">Random Delay (seconds):</div>
-									<div class="flex items-center gap-3">
-										<input
-											id="delay-min-desktop"
-											type="number"
-											min="1"
-											max="10"
-											value={shotTimerConfig.randomDelayMin / 1000}
-											oninput={(e) => {
-												const val = parseFloat(e.target.value) * 1000;
-												if (!isNaN(val) && val > 0 && val <= shotTimerConfig.randomDelayMax) {
-													shotTimerConfig.randomDelayMin = val;
-													shotTimerConfig = { ...shotTimerConfig };
-												}
-											}}
-											class="w-20 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-										/>
-										<span class="text-gray-400">to</span>
-										<input
-											id="delay-max-desktop"
-											type="number"
-											min="1"
-											max="10"
-											value={shotTimerConfig.randomDelayMax / 1000}
-											oninput={(e) => {
-												const val = parseFloat(e.target.value) * 1000;
-												if (!isNaN(val) && val > 0 && val >= shotTimerConfig.randomDelayMin) {
-													shotTimerConfig.randomDelayMax = val;
-													shotTimerConfig = { ...shotTimerConfig };
-												}
-											}}
-											class="w-20 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-										/>
-									</div>
-									<p class="text-xs text-gray-500 mt-1">Timer will beep randomly between these times</p>
-								</div>
-								
-								<!-- Volume Control -->
-								<div>
-									<label for="beep-volume-desktop" class="block text-sm text-gray-400 mb-2">
-										Beep Volume: {Math.round(shotTimerConfig.beepVolume * 100)}%
-									</label>
-									<input
-										id="beep-volume-desktop"
-										type="range"
-										min="0"
-										max="100"
-										value={shotTimerConfig.beepVolume * 100}
-										oninput={(e) => {
-											shotTimerConfig.beepVolume = e.target.value / 100;
-											shotTimerConfig = { ...shotTimerConfig };
-										}}
-										class="w-full"
-									/>
-								</div>
-								
-								<!-- Auto Next Round Settings -->
-								<div class="border-t border-gray-700 pt-4 mt-4">
-									<div class="flex items-center gap-3 mb-4">
-										<input
-											id="auto-next-round-desktop"
-											type="checkbox"
-											bind:checked={shotTimerConfig.autoNextRound}
-											class="w-5 h-5"
-										/>
-										<label for="auto-next-round-desktop" class="text-sm font-semibold text-gray-300">
-											Enable Automatic Next Round
-										</label>
-									</div>
-									
-									{#if shotTimerConfig.autoNextRound}
-										<div class="space-y-3 ml-8">
-											<!-- Round Count -->
-											<div>
-												<label for="round-count-desktop" class="block text-sm text-gray-400 mb-2">
-													Number of Rounds: {shotTimerConfig.roundCount}
-												</label>
-												<input
-													id="round-count-desktop"
-													type="number"
-													min="1"
-													max="100"
-													value={shotTimerConfig.roundCount}
-													oninput={(e) => {
-														const val = parseInt(e.target.value);
-														if (!isNaN(val) && val > 0 && val <= 100) {
-															shotTimerConfig.roundCount = val;
-															shotTimerConfig = { ...shotTimerConfig };
-														}
-													}}
-													class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-												/>
-											</div>
-											
-											<!-- Reset Duration -->
-											<div>
-												<label for="reset-duration-desktop" class="block text-sm text-gray-400 mb-2">
-													Reset Duration: {(shotTimerConfig.resetDuration / 1000).toFixed(1)}s
-												</label>
-												<input
-													id="reset-duration-desktop"
-													type="range"
-													min="1"
-													max="10"
-													step="0.5"
-													value={shotTimerConfig.resetDuration / 1000}
-													oninput={(e) => {
-														const val = parseFloat(e.target.value) * 1000;
-														if (!isNaN(val) && val >= 1000 && val <= 10000) {
-															shotTimerConfig.resetDuration = val;
-															shotTimerConfig = { ...shotTimerConfig };
-														}
-													}}
-													class="w-full"
-												/>
-												<p class="text-xs text-gray-500 mt-1">Time between rounds before next drill starts</p>
-											</div>
-										</div>
-									{/if}
-								</div>
-								
-								<!-- Round Counter Display -->
-								{#if shotTimerConfig.autoNextRound && currentRound > 0}
-									<div class="mt-4 pt-4 border-t border-gray-700">
-										<p class="text-sm text-gray-400 text-center">
-											Round {currentRound} of {shotTimerConfig.roundCount}
-										</p>
-									</div>
-								{/if}
-								
-								<!-- Start Button -->
-								<button
-									onclick={shotTimerSession.reps.length === 0 ? startSession : startDrill}
-									disabled={shotTimerActive}
-									class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-6 py-4 rounded-lg font-semibold text-lg"
-								>
-									I'm Ready - Start Drill
-								</button>
-								
-								{#if shotTimerSession.reps.length > 0}
-									<div class="mt-4 pt-4 border-t border-gray-700">
-										<p class="text-sm text-gray-400 mb-2">
-											Session: {shotTimerSession.reps.length} rep{shotTimerSession.reps.length !== 1 ? 's' : ''} completed
-										</p>
-										<button
-											onclick={() => showSessionStats = !showSessionStats}
-											class="w-full bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-lg font-semibold text-sm"
-										>
-											{showSessionStats ? 'Hide' : 'View'} Session Stats
-										</button>
-									</div>
-								{/if}
-							</div>
-						{:else if shotTimerPhase === 'waiting'}
-							<!-- Waiting for beep -->
-							<div class="text-center py-8">
-								{#if shotTimerConfig.autoNextRound && currentRound > 0}
-									<div class="text-sm text-gray-400 mb-2">Round {currentRound} of {shotTimerConfig.roundCount}</div>
-								{/if}
-								<div class="inline-block w-3 h-3 bg-yellow-500 rounded-full animate-pulse mb-4"></div>
-								<p class="text-lg font-semibold mb-4">Get ready... Timer will beep soon</p>
-								<button
-									onclick={cancelDrill}
-									class="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-lg font-semibold"
-								>
-									Cancel Drill
-								</button>
-							</div>
-						{:else if shotTimerPhase === 'active'}
-							<!-- Timer active -->
-							{@const _ = timerDisplayUpdate} <!-- Trigger reactivity -->
-							<div class="text-center py-8 border-2 border-green-500 rounded-lg">
-								{#if shotTimerConfig.autoNextRound && currentRound > 0}
-									<div class="text-sm text-gray-400 mb-2">Round {currentRound} of {shotTimerConfig.roundCount}</div>
-								{/if}
-								<div class="text-5xl font-bold font-mono text-green-500 mb-4">
-									{formatTime(getCurrentElapsed())}s
-								</div>
-								<p class="text-xl font-semibold mb-4">⏱️ TIMER ACTIVE - SHOOT!</p>
-								<button
-									onclick={cancelDrill}
-									class="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-lg font-semibold"
-								>
-									Cancel
-								</button>
-							</div>
-						{:else if shotTimerPhase === 'complete'}
-							<!-- Rep complete -->
-							{@const lastRep = shotTimerSession.reps[shotTimerSession.reps.length - 1]}
-							<div class="space-y-4">
-								{#if shotTimerConfig.autoNextRound && currentRound > 0}
-									<div class="text-center mb-2">
-										<div class="text-sm text-gray-400">Round {currentRound} of {shotTimerConfig.roundCount}</div>
-										{#if currentRound >= shotTimerConfig.roundCount}
-											<div class="text-lg font-semibold text-green-500 mt-2">Session Complete!</div>
-										{/if}
-									</div>
-								{/if}
-								<div class="text-center py-4">
-									<div class="text-sm text-gray-400 mb-2">Draw Time:</div>
-									<div class="text-4xl font-bold font-mono text-green-500 mb-4">
-										{formatTime(lastRep.drawTime)}s
-									</div>
-									<div class="flex items-center justify-center gap-4 text-lg">
-										<span style="color: {lastRep.hit.zoneColor}; font-weight: 600;">
-											{lastRep.hit.zone}
-										</span>
-										{#if lastRep.hit.points !== null}
-											<span class="text-yellow-500 font-semibold">+{lastRep.hit.points} pts</span>
-										{/if}
-									</div>
-								</div>
-								
-								{#if shotTimerConfig.autoNextRound && currentRound < shotTimerConfig.roundCount && autoNextCountdown !== null}
-									<div class="bg-blue-900/30 border border-blue-500 rounded-lg p-4 text-center">
-										<div class="text-sm text-gray-400 mb-2">Next round starting in:</div>
-										<div class="text-3xl font-bold font-mono text-blue-400">
-											{(autoNextCountdown / 1000).toFixed(1)}s
-										</div>
-									</div>
-								{/if}
-								
-								<div class="flex gap-3">
-									{#if !shotTimerConfig.autoNextRound || currentRound >= shotTimerConfig.roundCount}
-										<button
-											onclick={nextRep}
-											class="flex-1 bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold"
-											disabled={shotTimerConfig.autoNextRound && currentRound >= shotTimerConfig.roundCount}
-										>
-											Next Rep
-										</button>
-									{/if}
-									<button
-										onclick={() => {
-											showSessionStats = true;
-											shotTimerPhase = 'idle';
-											if (shotTimerAutoNextTimeout) {
-												clearTimeout(shotTimerAutoNextTimeout);
-												shotTimerAutoNextTimeout = null;
-											}
-											autoNextCountdown = null;
-											// Reset round counter if session was completed
-											if (shotTimerConfig.autoNextRound && currentRound >= shotTimerConfig.roundCount) {
-												currentRound = 0;
-											}
-										}}
-										class="flex-1 bg-gray-600 hover:bg-gray-700 px-6 py-3 rounded-lg font-semibold"
-									>
-										View Stats
-									</button>
-								</div>
-							</div>
-						{/if}
-					</div>
-				{/if}
-
-				<!-- Session Statistics -->
-				{#if showSessionStats && shotTimerSession.reps.length > 0}
-					<div class="bg-gray-800 rounded-lg p-6 mb-4">
-						<h3 class="text-xl font-semibold mb-4">Draw Timer Session</h3>
-						
-						<!-- Session Stats -->
-						<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-							<div class="bg-gray-700 rounded-lg p-4 text-center">
-								<div class="text-sm text-gray-400 mb-1">Reps Completed</div>
-								<div class="text-2xl font-bold font-mono">{shotTimerSession.reps.length}</div>
-							</div>
-							<div class="bg-gray-700 rounded-lg p-4 text-center">
-								<div class="text-sm text-gray-400 mb-1">Average Time</div>
-								<div class="text-2xl font-bold font-mono">{formatTime(calculateAverage())}s</div>
-							</div>
-							<div class="bg-gray-700 rounded-lg p-4 text-center">
-								<div class="text-sm text-gray-400 mb-1">Best Time</div>
-								<div class="text-2xl font-bold font-mono text-green-500">{formatTime(calculateBest())}s</div>
-							</div>
-							<div class="bg-gray-700 rounded-lg p-4 text-center">
-								<div class="text-sm text-gray-400 mb-1">Worst Time</div>
-								<div class="text-2xl font-bold font-mono text-red-500">{formatTime(calculateWorst())}s</div>
-							</div>
-						</div>
-						
-						<!-- Accuracy Breakdown -->
-						{#if calculateAccuracyByZone().length > 0}
-							<div class="mb-6">
-								<h4 class="text-lg font-semibold mb-3">Accuracy</h4>
-								<div class="space-y-2">
-									{#each calculateAccuracyByZone() as zone}
-										<div class="flex justify-between items-center py-2 border-b border-gray-700">
-											<span style="color: {zone.color}; font-weight: 600;">{zone.name}</span>
-											<span class="text-gray-300">
-												{zone.count}/{shotTimerSession.reps.length} ({zone.percentage}%)
-											</span>
-										</div>
-									{/each}
-								</div>
-							</div>
-						{/if}
-						
-						<!-- Individual Reps List -->
-						<div class="mb-6">
-							<h4 class="text-lg font-semibold mb-3">Individual Reps</h4>
-							<div class="overflow-x-auto">
-								<table class="w-full text-sm">
-									<thead>
-										<tr class="border-b border-gray-700">
-											<th class="text-left py-2 text-gray-400">#</th>
-											<th class="text-left py-2 text-gray-400">Time</th>
-											<th class="text-left py-2 text-gray-400">Zone</th>
-											<th class="text-left py-2 text-gray-400">Points</th>
-										</tr>
-									</thead>
-									<tbody>
-										{#each shotTimerSession.reps as rep, index}
-											<tr class="border-b border-gray-700">
-												<td class="py-2 text-gray-300">{index + 1}</td>
-												<td class="py-2 text-gray-300 font-mono">{formatTime(rep.drawTime)}s</td>
-												<td class="py-2" style="color: {rep.hit.zoneColor}; font-weight: 600;">{rep.hit.zone}</td>
-												<td class="py-2 text-gray-300">{rep.hit.points !== null ? `+${rep.hit.points}` : '-'}</td>
-											</tr>
-										{/each}
-									</tbody>
-								</table>
-							</div>
-						</div>
-						
-						<!-- Session Actions -->
-						<div class="flex gap-3">
-							<button
-								onclick={() => {
-									showSessionStats = false;
-									shotTimerCooldownUntil = null;
-									startDrill();
-								}}
-								class="flex-1 bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold"
-							>
-								Continue Session
-							</button>
-							<button
-								onclick={() => {
-									shotTimerSession = { reps: [], startedAt: null };
-									showSessionStats = false;
-									shotTimerPhase = 'idle';
-								}}
-								class="flex-1 bg-gray-600 hover:bg-gray-700 px-6 py-3 rounded-lg font-semibold"
-							>
-								End Session
-							</button>
-						</div>
-					</div>
-				{/if}
-
-				<!-- Status -->
-				<div class="bg-gray-800 rounded-lg p-4 mb-4">
-					<div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-						<div>
-							<span class="text-gray-400">Status:</span>
-							<span class="ml-2 font-semibold">{isStreaming ? 'Active' : 'Inactive'}</span>
-						</div>
-						<div>
-							<span class="text-gray-400">Hits Detected:</span>
-							<span class="ml-2 font-semibold">{hits.length}</span>
-						</div>
-						<div>
-							<span class="text-gray-400">Target Calibrated:</span>
-							<span class="ml-2 font-semibold">{targetBoundary ? 'Yes' : 'No'}</span>
-						</div>
-						<div>
-							<span class="text-gray-400">Detection:</span>
-							<span class="ml-2 font-semibold">{detectionActive ? 'Active' : 'Inactive'}</span>
-						</div>
-					</div>
-				</div>
-
-				<!-- Score Display -->
-				{#if hits.length > 0}
-					{@const score = calculateScore()}
-					<div class="bg-gray-800 rounded-lg p-4 mb-4">
-						{#if targetMode === 'freeform'}
-							<h2 class="text-xl font-semibold mb-3">
-								Total Hits: {hits.length}
-							</h2>
-							{#if score.averagePosition}
-								<p class="text-sm text-gray-400">
-									Average position: x={score.averagePosition.x.toFixed(0)}, y={score.averagePosition.y.toFixed(0)}
-								</p>
-							{/if}
-						{:else if targetMode === 'preloaded' && templates[selectedTemplate]?.grid}
-							<h2 class="text-xl font-semibold mb-3">
-								Total Hits: {hits.length}
-							</h2>
-							{#if score.cellCounts}
-								<div class="text-sm">
-									<p class="text-gray-400 mb-2">Cell Accuracy:</p>
-									<div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-										{#each Object.entries(score.cellCounts).slice(0, 8) as [cell, count]}
-											<div>
-												<span class="text-gray-400">{cell}:</span>
-												<span class="ml-2 font-semibold">{count} hit{count !== 1 ? 's' : ''}</span>
-											</div>
-										{/each}
-									</div>
-								</div>
-							{/if}
-						{:else}
-							<h2 class="text-xl font-semibold mb-3">
-								Total Score: {score.total} pts ({hits.length} hit{hits.length !== 1 ? 's' : ''})
-							</h2>
-							{#if score.breakdown}
-								<div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-									<div>
-										<span class="text-gray-400">A-zone:</span>
-										<span class="ml-2 font-semibold" style="color: {zones.A?.color || '#4ade80'}">
-											{score.breakdown.A.count} hit{score.breakdown.A.count !== 1 ? 's' : ''} ({score.breakdown.A.points} pts)
-										</span>
-									</div>
-									<div>
-										<span class="text-gray-400">C-zone:</span>
-										<span class="ml-2 font-semibold" style="color: {zones.C?.color || '#fbbf24'}">
-											{score.breakdown.C.count} hit{score.breakdown.C.count !== 1 ? 's' : ''} ({score.breakdown.C.points} pts)
-										</span>
-									</div>
-									<div>
-										<span class="text-gray-400">D-zone:</span>
-										<span class="ml-2 font-semibold" style="color: {zones.D?.color || '#f87171'}">
-											{score.breakdown.D.count} hit{score.breakdown.D.count !== 1 ? 's' : ''} ({score.breakdown.D.points} pts)
-										</span>
-									</div>
-									<div>
-										<span class="text-gray-400">Misses:</span>
-										<span class="ml-2 font-semibold text-gray-400">
-											{score.breakdown.Miss.count} ({score.breakdown.Miss.points} pts)
-										</span>
-									</div>
-								</div>
-							{/if}
-						{/if}
-					</div>
-				{/if}
-
-				<!-- Hit Log -->
-				<div class="bg-gray-800 rounded-lg p-4">
-					<h2 class="text-xl font-semibold mb-3">Hits Detected: {hits.length}</h2>
-					{#if hits.length === 0}
-						<p class="text-gray-400 text-sm">No hits detected yet. Point your laser at the target.</p>
-					{:else}
-						<div class="space-y-2 max-h-64 overflow-y-auto">
-							{#each hits.slice().reverse() as hit (hit.id)}
-								<div
-									class="flex items-center justify-between p-2 bg-gray-700 rounded text-sm"
-								>
-									<div class="flex items-center gap-3">
-										<div
-											class="w-4 h-4 rounded-full border-2"
-											style="background-color: {hit.color === 'red' ? 'rgba(255,0,0,0.5)' : 'rgba(0,255,0,0.5)'}; border-color: {hit.color === 'red' ? '#ff0000' : '#00ff00'};"
-										></div>
-										<span>
-											{#if targetMode === 'freeform'}
-												Hit: x={hit.x.toFixed(0)}, y={hit.y.toFixed(0)} @ {formatTimestamp(hit.timestamp)}
-											{:else if targetMode === 'preloaded' && templates[selectedTemplate]?.grid}
-												{#if hit.zone && hit.zone !== 'Miss'}
-													<span style="color: {hit.zoneColor || '#3b82f6'}; font-weight: 600;">
-														{hit.zone}:
-													</span>
-												{:else}
-													<span style="color: #9ca3af; font-weight: 600;">Miss:</span>
-												{/if}
-												{' '}x={hit.x.toFixed(0)}, y={hit.y.toFixed(0)} @ {formatTimestamp(hit.timestamp)}
-											{:else}
-												{#if hit.zone && hit.zone !== 'Miss' && hit.zone !== 'Hit'}
-													<span style="color: {hit.zoneColor || getZoneColor(hit.zone)}; font-weight: 600;">
-														{hit.zone}-zone:
-													</span>
-												{:else if hit.zone === 'Hit'}
-													<span style="color: {hit.zoneColor || '#3b82f6'}; font-weight: 600;">Hit:</span>
-												{:else}
-													<span style="color: #9ca3af; font-weight: 600;">Miss:</span>
-												{/if}
-												{' '}x={hit.x.toFixed(0)}, y={hit.y.toFixed(0)} @ {formatTimestamp(hit.timestamp)}
-												{#if hit.points !== undefined && hit.points !== null}
-													{' '}<span style="color: {hit.zoneColor || getZoneColor(hit.zone)};">(+{hit.points}pts)</span>
-												{/if}
-											{/if}
-										</span>
-									</div>
-									<span class="text-gray-400 text-xs">{getRelativeTime(hit.timestamp)}</span>
-								</div>
-							{/each}
-						</div>
-					{/if}
-				</div>
-
-				<!-- Instructions -->
-				<div class="mt-6 bg-blue-900/30 border border-blue-700 rounded-lg p-4 text-sm">
-					<h3 class="font-semibold mb-2">Instructions:</h3>
-					<ul class="list-disc list-inside space-y-1 text-gray-300">
-						<li>Grant camera permissions when prompted</li>
-						<li>Point your laser training cartridge at a target</li>
-						<li>Red and green lasers are automatically detected</li>
-						<li>Calibrate target boundaries by tapping 4 corners <strong>clockwise</strong>: top-left → top-right → bottom-right → bottom-left</li>
-						<li>Hits are logged with coordinates and timestamps</li>
-					</ul>
-				</div>
-			</div>
-		</div>
-	</div>
-	
-</MobileLayout>
 
 <style>
 	/* Mobile-specific styles */
