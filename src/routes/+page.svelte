@@ -18,17 +18,19 @@
 
 	// Detection parameters
 	const RED_THRESHOLD = {
-		r: 200,
-		g: 100,
-		b: 100
+		r: 150,  // Balanced threshold - bright enough to avoid false positives
+		g: 70,   // Lower green threshold to ensure red dominance
+		b: 70    // Lower blue threshold to ensure red dominance
 	};
 	const GREEN_THRESHOLD = {
-		r: 100,
-		g: 200,
-		b: 100
+		r: 70,   // Lower red threshold to ensure green dominance
+		g: 150,  // Balanced threshold - bright enough to avoid false positives
+		b: 70    // Lower blue threshold to ensure green dominance
 	};
 	const CLUSTER_RADIUS = 10; // pixels
-	const MIN_LASER_SIZE = 3; // minimum pixels to consider a hit
+	const MIN_LASER_SIZE = 2; // Require at least 2 pixels to reduce noise
+	const MIN_COLOR_DOMINANCE = 30; // Minimum difference between dominant color and other channels
+	const MIN_BRIGHTNESS = 100; // Minimum total brightness (r+g+b) to avoid dim false positives
 
 	// Default zone definitions (IPSC-style, normalized coordinates 0-1)
 	const DEFAULT_ZONES = {
@@ -118,6 +120,82 @@
 				cols: 8
 			},
 			zones: [] // Generated dynamically
+		},
+		'diagnostic-target': {
+			name: 'Diagnostic Target',
+			size: '8.5" x 11" (or any size)',
+			recommendedDistance: '10-15 feet',
+			zones: [
+				{
+					name: 'Bullseye',
+					points: 10,
+					normalized: { minX: 0.4, maxX: 0.6, minY: 0.4, maxY: 0.6 },
+					color: '#000000' // black center
+				},
+				{
+					name: 'Pushing',
+					points: 0,
+					normalized: { minX: 0, maxX: 0.4, minY: 0, maxY: 0.4 },
+					color: '#ef4444',
+					label: 'PUSHING\nANTICIPATING RECOIL'
+				},
+				{
+					name: 'Breaking Wrist Up',
+					points: 0,
+					normalized: { minX: 0.4, maxX: 0.6, minY: 0, maxY: 0.3 },
+					color: '#f59e0b',
+					label: 'BREAKING\nWRIST UP'
+				},
+				{
+					name: 'Heeling',
+					points: 0,
+					normalized: { minX: 0.6, maxX: 1, minY: 0, maxY: 0.4 },
+					color: '#ef4444',
+					label: 'HEELING\nANTICIPATING RECOIL'
+				},
+				{
+					name: 'Thumbing',
+					points: 0,
+					normalized: { minX: 0.7, maxX: 1, minY: 0.3, maxY: 0.6 },
+					color: '#f59e0b',
+					label: 'THUMBING'
+				},
+				{
+					name: 'Squeezing Whole Hand',
+					points: 0,
+					normalized: { minX: 0.6, maxX: 1, minY: 0.6, maxY: 1 },
+					color: '#ef4444',
+					label: 'SQUEEZING\nWHOLE HAND'
+				},
+				{
+					name: 'Breaking Wrist Down',
+					points: 0,
+					normalized: { minX: 0.4, maxX: 0.6, minY: 0.7, maxY: 1 },
+					color: '#f59e0b',
+					label: 'BREAKING\nWRIST DOWN'
+				},
+				{
+					name: 'Jerking',
+					points: 0,
+					normalized: { minX: 0, maxX: 0.3, minY: 0.7, maxY: 1 },
+					color: '#ef4444',
+					label: 'JERKING'
+				},
+				{
+					name: 'Squeezing Fingertips',
+					points: 0,
+					normalized: { minX: 0, maxX: 0.3, minY: 0.5, maxY: 0.7 },
+					color: '#f59e0b',
+					label: 'SQUEEZING\nFINGER TIPS'
+				},
+				{
+					name: 'Trigger Finger',
+					points: 0,
+					normalized: { minX: 0, maxX: 0.4, minY: 0.3, maxY: 0.5 },
+					color: '#f59e0b',
+					label: 'TOO MUCH/TOO LITTLE\nTRIGGER FINGER'
+				}
+			]
 		}
 	};
 
@@ -142,20 +220,38 @@
 		randomDelayMin: 2000, // ms
 		randomDelayMax: 5000, // ms
 		beepVolume: 0.3,
-		beepFrequency: 1000 // Hz
+		beepFrequency: 1000, // Hz
+		autoNextRound: false, // Enable automatic next round
+		roundCount: 10, // Number of rounds to shoot
+		resetDuration: 3000 // ms between rounds
 	});
 	let shotTimerSession = $state({
 		reps: [],
 		startedAt: null
 	});
 	let shotTimerDelayTimeout = null;
+	let shotTimerAutoNextTimeout = null; // Timeout for automatic next round
 	let audioContext = null;
 	let showShotTimer = $state(false);
 	let showSessionStats = $state(false);
 	let timerDisplayUpdate = $state(0); // Force reactivity for timer display
 	let shotTimerCooldownUntil = $state(null); // Cooldown period after timer stops
+	let currentRound = $state(0); // Current round number (1-indexed)
+	let autoNextCountdown = $state(null); // Countdown remaining for auto-advance (ms)
 	let lastCalibrationClickTime = 0; // Debounce calibration clicks
 	const CALIBRATION_CLICK_DEBOUNCE_MS = 300; // Prevent double-firing
+
+	// Camera Zoom State
+	let cameraZoom = $state(1.0); // Zoom level (1.0 = no zoom)
+	let cameraPanX = $state(0); // Pan offset X
+	let cameraPanY = $state(0); // Pan offset Y
+	let isZooming = $state(false);
+	let zoomStartDistance = 0;
+	let zoomStartZoom = 1.0;
+	let zoomStartPanX = 0;
+	let zoomStartPanY = 0;
+	let lastTouchCenterX = 0;
+	let lastTouchCenterY = 0;
 
 	// Shot Sequence Visualization State
 	let sessionShotCounter = $state(0); // Sequential shot number counter
@@ -170,6 +266,8 @@
 		numberSize: 16
 	});
 	let showVisualizationControls = $state(false);
+	let showDiagnosticOverlay = $state(false);
+	let showDebugOverlay = $state(false); // Debug mode to show detection pixels
 	let drawerRef = null; // Reference to MobileLayout component
 
 	// Initialize camera
@@ -247,6 +345,11 @@
 		// Get image data for processing
 		const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 		const pixels = imageData.data;
+
+		// Clear debug pixels for this frame
+		if (showDebugOverlay) {
+			window.debugPixels = [];
+		}
 
 		// Detect laser dots
 		const detectedHits = detectLaserDots(pixels, canvas.width, canvas.height);
@@ -330,31 +433,65 @@
 	function detectLaserDots(pixels, width, height) {
 		const hits = [];
 		const visited = new Set();
+		const debugPixels = showDebugOverlay ? [] : null; // Store pixels that match criteria for debug overlay
 
 		// Scan for bright red or green pixels
-		for (let y = 0; y < height; y += 2) {
-			// Sample every 2nd pixel for performance
-			for (let x = 0; x < width; x += 2) {
+		for (let y = 0; y < height; y += 1) {
+			// Sample every pixel for better detection of small laser dots
+			for (let x = 0; x < width; x += 1) {
 				const idx = (y * width + x) * 4;
 				const r = pixels[idx];
 				const g = pixels[idx + 1];
 				const b = pixels[idx + 2];
+				const brightness = r + g + b;
 
-				// Check for red laser
-				if (r > RED_THRESHOLD.r && g < RED_THRESHOLD.g && b < RED_THRESHOLD.b) {
+				// Skip dim pixels to avoid false positives
+				if (brightness < MIN_BRIGHTNESS) continue;
+
+				// Check for red laser - require both threshold match AND significant color dominance
+				const redMatch = r > RED_THRESHOLD.r && g < RED_THRESHOLD.g && b < RED_THRESHOLD.b;
+				const redDominant = r > g && r > b && r > RED_THRESHOLD.r;
+				const redDominanceDiff = Math.min(r - g, r - b); // How much more red than other channels
+				
+				// Require strict threshold match OR (dominant with significant difference)
+				if (redMatch || (redDominant && redDominanceDiff >= MIN_COLOR_DOMINANCE)) {
+					if (showDebugOverlay && debugPixels) {
+						debugPixels.push({ x, y, r, g, b, color: 'red', matched: redMatch, dominant: redDominant });
+					}
 					const cluster = findCluster(x, y, pixels, width, height, 'red', visited);
 					if (cluster && cluster.size >= MIN_LASER_SIZE) {
+						if (showDebugOverlay) {
+							console.log(`Red laser detected at (${cluster.centerX}, ${cluster.centerY}), size: ${cluster.size}, RGB: (${r}, ${g}, ${b})`);
+						}
 						hits.push({ x: cluster.centerX, y: cluster.centerY, color: 'red' });
 					}
 				}
-				// Check for green laser
-				else if (g > GREEN_THRESHOLD.g && r < GREEN_THRESHOLD.r && b < GREEN_THRESHOLD.b) {
-					const cluster = findCluster(x, y, pixels, width, height, 'green', visited);
-					if (cluster && cluster.size >= MIN_LASER_SIZE) {
-						hits.push({ x: cluster.centerX, y: cluster.centerY, color: 'green' });
+				// Check for green laser - require both threshold match AND significant color dominance
+				else {
+					const greenMatch = g > GREEN_THRESHOLD.g && r < GREEN_THRESHOLD.r && b < GREEN_THRESHOLD.b;
+					const greenDominant = g > r && g > b && g > GREEN_THRESHOLD.g;
+					const greenDominanceDiff = Math.min(g - r, g - b); // How much more green than other channels
+					
+					// Require strict threshold match OR (dominant with significant difference)
+					if (greenMatch || (greenDominant && greenDominanceDiff >= MIN_COLOR_DOMINANCE)) {
+						if (showDebugOverlay && debugPixels) {
+							debugPixels.push({ x, y, r, g, b, color: 'green', matched: greenMatch, dominant: greenDominant });
+						}
+						const cluster = findCluster(x, y, pixels, width, height, 'green', visited);
+						if (cluster && cluster.size >= MIN_LASER_SIZE) {
+							if (showDebugOverlay) {
+								console.log(`Green laser detected at (${cluster.centerX}, ${cluster.centerY}), size: ${cluster.size}, RGB: (${r}, ${g}, ${b})`);
+							}
+							hits.push({ x: cluster.centerX, y: cluster.centerY, color: 'green' });
+						}
 					}
 				}
 			}
+		}
+
+		// Store debug pixels for overlay drawing
+		if (showDebugOverlay && debugPixels) {
+			window.debugPixels = debugPixels;
 		}
 
 		return hits;
@@ -382,10 +519,20 @@
 			const g = pixels[idx + 1];
 			const b = pixels[idx + 2];
 
-			const isMatch =
-				color === 'red'
-					? r > threshold.r && g < threshold.g && b < threshold.b
-					: g > threshold.g && r < threshold.r && b < threshold.b;
+			// More selective matching: require strict threshold OR dominant with significant difference
+			const brightness = r + g + b;
+			let isMatch;
+			if (color === 'red') {
+				const strictMatch = r > threshold.r && g < threshold.g && b < threshold.b;
+				const dominantMatch = r > g && r > b && r > threshold.r;
+				const dominanceDiff = Math.min(r - g, r - b);
+				isMatch = (strictMatch || (dominantMatch && dominanceDiff >= MIN_COLOR_DOMINANCE)) && brightness >= MIN_BRIGHTNESS;
+			} else {
+				const strictMatch = g > threshold.g && r < threshold.r && b < threshold.b;
+				const dominantMatch = g > r && g > b && g > threshold.g;
+				const dominanceDiff = Math.min(g - r, g - b);
+				isMatch = (strictMatch || (dominantMatch && dominanceDiff >= MIN_COLOR_DOMINANCE)) && brightness >= MIN_BRIGHTNESS;
+			}
 
 			if (isMatch) {
 				cluster.push([x, y]);
@@ -479,10 +626,138 @@
 		}
 	}
 
+	function drawDiagnosticOverlay(ctx, width, height) {
+		// Draw diagnostic target overlay centered on canvas
+		const centerX = width / 2;
+		const centerY = height / 2;
+		const radius = Math.min(width, height) * 0.4; // 40% of smaller dimension
+		
+		// Save context
+		ctx.save();
+		
+		// Draw semi-transparent background circle
+		ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+		ctx.beginPath();
+		ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+		ctx.fill();
+		
+		// Draw concentric rings (bullseye)
+		ctx.strokeStyle = '#000000';
+		ctx.lineWidth = 2;
+		for (let i = 1; i <= 4; i++) {
+			const ringRadius = radius * (1 - i * 0.15);
+			ctx.beginPath();
+			ctx.arc(centerX, centerY, ringRadius, 0, Math.PI * 2);
+			ctx.stroke();
+		}
+		
+		// Draw center bullseye
+		ctx.fillStyle = '#000000';
+		ctx.beginPath();
+		ctx.arc(centerX, centerY, radius * 0.1, 0, Math.PI * 2);
+		ctx.fill();
+		
+		// Draw radial lines dividing the pie segments
+		ctx.strokeStyle = '#000000';
+		ctx.lineWidth = 1;
+		const segments = [
+			{ start: -Math.PI * 0.75, end: -Math.PI * 0.25, label: 'PUSHING\nANTICIPATING RECOIL', x: centerX - radius * 0.6, y: centerY - radius * 0.6 },
+			{ start: -Math.PI * 0.25, end: Math.PI * 0.25, label: 'BREAKING\nWRIST UP', x: centerX, y: centerY - radius * 0.7 },
+			{ start: Math.PI * 0.25, end: Math.PI * 0.75, label: 'HEELING\nANTICIPATING RECOIL', x: centerX + radius * 0.6, y: centerY - radius * 0.6 },
+			{ start: Math.PI * 0.75, end: Math.PI * 1.25, label: 'THUMBING', x: centerX + radius * 0.7, y: centerY },
+			{ start: Math.PI * 1.25, end: Math.PI * 1.75, label: 'SQUEEZING\nWHOLE HAND', x: centerX + radius * 0.6, y: centerY + radius * 0.6 },
+			{ start: Math.PI * 1.75, end: -Math.PI * 1.75, label: 'BREAKING\nWRIST DOWN', x: centerX, y: centerY + radius * 0.7 },
+			{ start: -Math.PI * 1.75, end: -Math.PI * 1.25, label: 'JERKING', x: centerX - radius * 0.7, y: centerY + radius * 0.6 },
+			{ start: -Math.PI * 1.25, end: -Math.PI * 0.75, label: 'SQUEEZING\nFINGER TIPS', x: centerX - radius * 0.6, y: centerY + radius * 0.3 },
+			{ start: -Math.PI * 0.5, end: -Math.PI * 0.25, label: 'TOO MUCH/TOO LITTLE\nTRIGGER FINGER', x: centerX - radius * 0.6, y: centerY - radius * 0.2 }
+		];
+		
+		// Draw pie segments with labels
+		for (const segment of segments) {
+			// Draw segment arc
+			ctx.beginPath();
+			ctx.moveTo(centerX, centerY);
+			ctx.arc(centerX, centerY, radius, segment.start, segment.end);
+			ctx.closePath();
+			ctx.fillStyle = 'rgba(239, 68, 68, 0.15)'; // Light red
+			ctx.fill();
+			ctx.strokeStyle = '#000000';
+			ctx.lineWidth = 1;
+			ctx.stroke();
+			
+			// Draw label
+			ctx.fillStyle = '#000000';
+			ctx.font = 'bold 12px sans-serif';
+			ctx.textAlign = 'center';
+			ctx.textBaseline = 'middle';
+			const lines = segment.label.split('\n');
+			lines.forEach((line, i) => {
+				ctx.fillText(line, segment.x, segment.y + (i - (lines.length - 1) / 2) * 14);
+			});
+		}
+		
+		// Draw "RIGHT HANDED SHOOTER" label at bottom
+		ctx.fillStyle = '#000000';
+		ctx.font = 'bold 14px sans-serif';
+		ctx.textAlign = 'center';
+		ctx.fillText('RIGHT HANDED SHOOTER', centerX, centerY + radius + 30);
+		
+		// Restore context
+		ctx.restore();
+	}
+
+	function drawDebugOverlay(ctx, width, height) {
+		// Draw debug pixels that match detection criteria
+		if (!window.debugPixels || window.debugPixels.length === 0) return;
+		
+		ctx.save();
+		
+		// Draw each matching pixel
+		for (const pixel of window.debugPixels) {
+			// Draw a small circle at matching pixels
+			ctx.fillStyle = pixel.color === 'red' 
+				? (pixel.matched ? 'rgba(255, 0, 0, 0.5)' : 'rgba(255, 100, 100, 0.3)')
+				: (pixel.matched ? 'rgba(0, 255, 0, 0.5)' : 'rgba(100, 255, 100, 0.3)');
+			ctx.beginPath();
+			ctx.arc(pixel.x, pixel.y, 2, 0, Math.PI * 2);
+			ctx.fill();
+		}
+		
+		// Draw RGB info for the brightest matching pixel
+		if (window.debugPixels.length > 0) {
+			const brightest = window.debugPixels.reduce((max, p) => {
+				const brightness = p.r + p.g + p.b;
+				const maxBrightness = max.r + max.g + max.b;
+				return brightness > maxBrightness ? p : max;
+			});
+			
+			ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+			ctx.fillRect(10, 10, 200, 60);
+			ctx.fillStyle = '#ffffff';
+			ctx.font = '12px monospace';
+			ctx.textAlign = 'left';
+			ctx.fillText(`Debug Mode: ${window.debugPixels.length} pixels`, 15, 25);
+			ctx.fillText(`RGB: (${brightest.r}, ${brightest.g}, ${brightest.b})`, 15, 40);
+			ctx.fillText(`Pos: (${brightest.x}, ${brightest.y})`, 15, 55);
+		}
+		
+		ctx.restore();
+	}
+
 	function drawOverlays(ctx, width, height) {
 		// Clear canvas (video is redrawn each frame)
 		ctx.clearRect(0, 0, width, height);
 		ctx.drawImage(videoElement, 0, 0, width, height);
+
+		// Draw diagnostic overlay if enabled (draw before target zones so it's behind)
+		if (showDiagnosticOverlay) {
+			drawDiagnosticOverlay(ctx, width, height);
+		}
+
+		// Draw debug overlay if enabled (shows detected pixels)
+		if (showDebugOverlay) {
+			drawDebugOverlay(ctx, width, height);
+		}
 
 		// Draw target boundary and zones if calibrated
 		if (targetBoundary) {
@@ -803,13 +1078,26 @@
 			clientY = event.clientY;
 		}
 
-		const rect = canvasElement.getBoundingClientRect();
-		const x = clientX - rect.left;
-		const y = clientY - rect.top;
-		const scaleX = canvasElement.width / rect.width;
-		const scaleY = canvasElement.height / rect.height;
-		const actualX = x * scaleX;
-		const actualY = y * scaleY;
+		// Get wrapper element (parent of canvas)
+		const wrapper = canvasElement.parentElement;
+		if (!wrapper) return;
+		
+		const wrapperRect = wrapper.getBoundingClientRect();
+		const canvasRect = canvasElement.getBoundingClientRect();
+		
+		// Get click position relative to wrapper
+		const x = clientX - wrapperRect.left;
+		const y = clientY - wrapperRect.top;
+		
+		// Account for CSS zoom/pan transform: convert wrapper coords to canvas coords
+		const canvasX = (x - cameraPanX) / cameraZoom;
+		const canvasY = (y - cameraPanY) / cameraZoom;
+		
+		// Convert to actual canvas pixel coordinates
+		const scaleX = canvasElement.width / canvasRect.width;
+		const scaleY = canvasElement.height / canvasRect.height;
+		const actualX = canvasX * scaleX;
+		const actualY = canvasY * scaleY;
 
 		calibrationPoints = [...calibrationPoints, { x: actualX, y: actualY }];
 
@@ -848,13 +1136,26 @@
 			clientY = event.clientY;
 		}
 
-		const rect = canvasElement.getBoundingClientRect();
-		const x = clientX - rect.left;
-		const y = clientY - rect.top;
-		const scaleX = canvasElement.width / rect.width;
-		const scaleY = canvasElement.height / rect.height;
-		const actualX = x * scaleX;
-		const actualY = y * scaleY;
+		// Get wrapper element (parent of canvas)
+		const wrapper = canvasElement.parentElement;
+		if (!wrapper) return;
+		
+		const wrapperRect = wrapper.getBoundingClientRect();
+		const canvasRect = canvasElement.getBoundingClientRect();
+		
+		// Get click position relative to wrapper
+		const x = clientX - wrapperRect.left;
+		const y = clientY - wrapperRect.top;
+		
+		// Account for CSS zoom/pan transform: convert wrapper coords to canvas coords
+		const canvasX = (x - cameraPanX) / cameraZoom;
+		const canvasY = (y - cameraPanY) / cameraZoom;
+		
+		// Convert to actual canvas pixel coordinates
+		const scaleX = canvasElement.width / canvasRect.width;
+		const scaleY = canvasElement.height / canvasRect.height;
+		const actualX = canvasX * scaleX;
+		const actualY = canvasY * scaleY;
 
 		zoneCalibrationPoints = [...zoneCalibrationPoints, { x: actualX, y: actualY }];
 
@@ -1009,6 +1310,133 @@
 		zoneCalibrationPoints = [];
 	}
 
+	// Camera Zoom Functions
+	function resetZoom() {
+		cameraZoom = 1.0;
+		cameraPanX = 0;
+		cameraPanY = 0;
+	}
+
+	function handleZoom(event) {
+		if (!canvasElement) return;
+		
+		// Prevent default zoom behavior
+		event.preventDefault();
+		
+		// Get zoom delta
+		let delta = 0;
+		if (event.deltaY) {
+			// Mouse wheel
+			delta = -event.deltaY * 0.001;
+		}
+		
+		// Get center point for zoom
+		const wrapper = canvasElement.parentElement;
+		if (!wrapper) return;
+		const wrapperRect = wrapper.getBoundingClientRect();
+		
+		let centerX = event.clientX ? event.clientX - wrapperRect.left : wrapperRect.width / 2;
+		let centerY = event.clientY ? event.clientY - wrapperRect.top : wrapperRect.height / 2;
+		
+		// Calculate zoom
+		const newZoom = Math.max(1.0, Math.min(5.0, cameraZoom + delta));
+		const zoomFactor = newZoom / cameraZoom;
+		
+		// Adjust pan to zoom towards the center point
+		cameraPanX = centerX - (centerX - cameraPanX) * zoomFactor;
+		cameraPanY = centerY - (centerY - cameraPanY) * zoomFactor;
+		
+		cameraZoom = newZoom;
+	}
+
+	function handlePinchStart(event) {
+		if (event.touches.length !== 2 || !canvasElement) return;
+		isZooming = true;
+		
+		const touch1 = event.touches[0];
+		const touch2 = event.touches[1];
+		const wrapper = canvasElement.parentElement;
+		if (!wrapper) return;
+		const wrapperRect = wrapper.getBoundingClientRect();
+		
+		zoomStartDistance = Math.hypot(
+			touch2.clientX - touch1.clientX,
+			touch2.clientY - touch1.clientY
+		);
+		zoomStartZoom = cameraZoom;
+		zoomStartPanX = cameraPanX;
+		zoomStartPanY = cameraPanY;
+		
+		lastTouchCenterX = ((touch1.clientX + touch2.clientX) / 2) - wrapperRect.left;
+		lastTouchCenterY = ((touch1.clientY + touch2.clientY) / 2) - wrapperRect.top;
+	}
+
+	function handlePinchMove(event) {
+		if (!isZooming || event.touches.length !== 2 || !canvasElement) return;
+		
+		event.preventDefault();
+		
+		const touch1 = event.touches[0];
+		const touch2 = event.touches[1];
+		const wrapper = canvasElement.parentElement;
+		if (!wrapper) return;
+		const wrapperRect = wrapper.getBoundingClientRect();
+		
+		const currentDistance = Math.hypot(
+			touch2.clientX - touch1.clientX,
+			touch2.clientY - touch1.clientY
+		);
+		
+		const zoomFactor = currentDistance / zoomStartDistance;
+		const newZoom = Math.max(1.0, Math.min(5.0, zoomStartZoom * zoomFactor));
+		
+		const centerX = ((touch1.clientX + touch2.clientX) / 2) - wrapperRect.left;
+		const centerY = ((touch1.clientY + touch2.clientY) / 2) - wrapperRect.top;
+		
+		// Adjust pan based on zoom and center point
+		const zoomDelta = newZoom / zoomStartZoom;
+		cameraPanX = centerX - (centerX - zoomStartPanX) * zoomDelta;
+		cameraPanY = centerY - (centerY - zoomStartPanY) * zoomDelta;
+		
+		cameraZoom = newZoom;
+		lastTouchCenterX = centerX;
+		lastTouchCenterY = centerY;
+	}
+
+	function handlePinchEnd(event) {
+		isZooming = false;
+	}
+
+	function handlePan(event) {
+		if (isZooming || cameraZoom <= 1.0 || !canvasElement) return;
+		
+		if (event.touches && event.touches.length === 1) {
+			// Single touch pan
+			event.preventDefault();
+			const touch = event.touches[0];
+			const wrapper = canvasElement.parentElement;
+			if (!wrapper) return;
+			const wrapperRect = wrapper.getBoundingClientRect();
+			
+			if (event.type === 'touchmove') {
+				const currentX = touch.clientX - wrapperRect.left;
+				const currentY = touch.clientY - wrapperRect.top;
+				
+				const deltaX = currentX - lastTouchCenterX;
+				const deltaY = currentY - lastTouchCenterY;
+				
+				cameraPanX += deltaX;
+				cameraPanY += deltaY;
+				
+				lastTouchCenterX = currentX;
+				lastTouchCenterY = currentY;
+			} else if (event.type === 'touchstart') {
+				lastTouchCenterX = touch.clientX - wrapperRect.left;
+				lastTouchCenterY = touch.clientY - wrapperRect.top;
+			}
+		}
+	}
+
 	function clearHits() {
 		hits = [];
 		lastHitTime = 0;
@@ -1154,6 +1582,26 @@
 
 	async function startDrill() {
 		autoCloseDrawer(); // Close drawer during drill
+		
+		// If starting a new session (no reps or session was completed), reset round counter
+		if (shotTimerSession.reps.length === 0 || 
+		    (shotTimerConfig.autoNextRound && currentRound >= shotTimerConfig.roundCount)) {
+			currentRound = 0;
+		}
+		
+		// Increment round counter
+		currentRound++;
+		
+		// Check if we've reached the round limit
+		if (shotTimerConfig.autoNextRound && currentRound > shotTimerConfig.roundCount) {
+			// Session complete
+			currentRound = shotTimerConfig.roundCount;
+			shotTimerActive = false;
+			shotTimerPhase = 'idle';
+			autoOpenDrawer('full');
+			return;
+		}
+		
 		// Reset state
 		shotTimerActive = true;
 		shotTimerPhase = 'waiting';
@@ -1164,7 +1612,7 @@
 		const delayRange = shotTimerConfig.randomDelayMax - shotTimerConfig.randomDelayMin;
 		const delay = shotTimerConfig.randomDelayMin + (Math.random() * delayRange);
 		
-		console.log(`Random delay: ${(delay / 1000).toFixed(2)}s`);
+		console.log(`Round ${currentRound}/${shotTimerConfig.roundCount} - Random delay: ${(delay / 1000).toFixed(2)}s`);
 		
 		// Wait for random delay
 		shotTimerDelayTimeout = setTimeout(() => {
@@ -1187,11 +1635,16 @@
 			clearTimeout(shotTimerDelayTimeout);
 			shotTimerDelayTimeout = null;
 		}
+		if (shotTimerAutoNextTimeout) {
+			clearTimeout(shotTimerAutoNextTimeout);
+			shotTimerAutoNextTimeout = null;
+		}
 		shotTimerActive = false;
 		shotTimerPhase = 'idle';
 		shotTimerStartTime = null;
 		shotTimerFirstHitTime = null;
 		shotTimerCooldownUntil = null; // Reset cooldown on cancel
+		autoNextCountdown = null; // Reset countdown on cancel
 		console.log('Drill cancelled');
 	}
 
@@ -1234,6 +1687,34 @@
 			// Timer is no longer active (drill complete)
 			shotTimerActive = false;
 			
+			// Check if we should auto-advance to next round
+			if (shotTimerConfig.autoNextRound && currentRound < shotTimerConfig.roundCount) {
+				// Set up countdown
+				const countdownStart = performance.now();
+				autoNextCountdown = shotTimerConfig.resetDuration;
+				
+				// Update countdown every 100ms
+				const countdownInterval = setInterval(() => {
+					const elapsed = performance.now() - countdownStart;
+					const remaining = Math.max(0, shotTimerConfig.resetDuration - elapsed);
+					autoNextCountdown = remaining;
+					
+					if (remaining <= 0) {
+						clearInterval(countdownInterval);
+						autoNextCountdown = null;
+					}
+				}, 100);
+				
+				// Schedule automatic next round after reset duration
+				shotTimerAutoNextTimeout = setTimeout(() => {
+					clearInterval(countdownInterval);
+					autoNextCountdown = null;
+					nextRep();
+				}, shotTimerConfig.resetDuration);
+			} else {
+				autoNextCountdown = null;
+			}
+			
 			// Open drawer to show results
 			autoOpenDrawer('full');
 			
@@ -1245,6 +1726,11 @@
 
 	function nextRep() {
 		shotTimerCooldownUntil = null; // Reset cooldown
+		autoNextCountdown = null; // Reset countdown
+		if (shotTimerAutoNextTimeout) {
+			clearTimeout(shotTimerAutoNextTimeout);
+			shotTimerAutoNextTimeout = null;
+		}
 		startDrill();
 	}
 
@@ -1253,7 +1739,12 @@
 			reps: [],
 			startedAt: Date.now()
 		};
+		currentRound = 0; // Reset round counter (will be incremented in startDrill)
 		shotTimerCooldownUntil = null; // Reset cooldown
+		if (shotTimerAutoNextTimeout) {
+			clearTimeout(shotTimerAutoNextTimeout);
+			shotTimerAutoNextTimeout = null;
+		}
 		startDrill();
 	}
 
@@ -1450,11 +1941,32 @@
 				muted
 				class="w-full h-full object-contain hidden"
 			></video>
-			<canvas
-				bind:this={canvasElement}
-				class="w-full h-full object-contain"
-				style="touch-action: none; display: block;"
-			></canvas>
+			<div 
+				class="canvas-wrapper"
+				style="transform: scale({cameraZoom}) translate({cameraPanX / cameraZoom}px, {cameraPanY / cameraZoom}px); transform-origin: 0 0; width: 100%; height: 100%; overflow: hidden;"
+				onwheel={handleZoom}
+				ontouchstart={(e) => {
+					if (e.touches.length === 2) {
+						handlePinchStart(e);
+					} else if (e.touches.length === 1 && cameraZoom > 1.0) {
+						handlePan(e);
+					}
+				}}
+				ontouchmove={(e) => {
+					if (e.touches.length === 2) {
+						handlePinchMove(e);
+					} else if (e.touches.length === 1 && cameraZoom > 1.0) {
+						handlePan(e);
+					}
+				}}
+				ontouchend={handlePinchEnd}
+			>
+				<canvas
+					bind:this={canvasElement}
+					class="w-full h-full object-contain"
+					style="touch-action: none; display: block;"
+				></canvas>
+			</div>
 			{#if calibrationMode}
 				<div
 					class="absolute inset-0 cursor-crosshair z-10"
@@ -1598,6 +2110,20 @@
 				onclick={() => { showVisualizationControls = true; autoOpenDrawer('full'); }}
 			>
 				🔢 Sequence
+			</button>
+			
+			<button 
+				class="action-btn {showDiagnosticOverlay ? 'success' : 'secondary'}"
+				onclick={() => showDiagnosticOverlay = !showDiagnosticOverlay}
+			>
+				🎯 Diagnostic
+			</button>
+			
+			<button 
+				class="action-btn {showDebugOverlay ? 'success' : 'secondary'}"
+				onclick={() => showDebugOverlay = !showDebugOverlay}
+			>
+				🔍 Debug
 			</button>
 			
 			<button 
@@ -1792,6 +2318,18 @@
 					Shot Sequence
 				</button>
 				<button
+					onclick={() => showDiagnosticOverlay = !showDiagnosticOverlay}
+					class="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
+				>
+					{showDiagnosticOverlay ? 'Hide' : 'Show'} Diagnostic
+				</button>
+				<button
+					onclick={() => showDebugOverlay = !showDebugOverlay}
+					class="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
+				>
+					{showDebugOverlay ? 'Hide' : 'Show'} Debug
+				</button>
+				<button
 					onclick={clearHits}
 					class="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
 				>
@@ -1938,6 +2476,29 @@
 				</p>
 			</div>
 		{/if}
+
+		<!-- Diagnostic Overlay Control -->
+		<div class="bg-gray-800 rounded-lg p-4 mb-4">
+			<div class="flex items-center justify-between">
+				<div>
+					<h3 class="text-lg font-semibold mb-1">Diagnostic Target Overlay</h3>
+					<p class="text-sm text-gray-400">
+						Show diagnostic pie chart overlay to identify shooting errors
+					</p>
+				</div>
+				<label class="relative inline-flex items-center cursor-pointer">
+					<input
+						type="checkbox"
+						bind:checked={showDiagnosticOverlay}
+						class="sr-only peer"
+					/>
+					<div class="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+				</label>
+			</div>
+			<p class="text-xs text-gray-500 mt-2">
+				💡 The overlay shows common shooting errors based on shot placement. Works with any target or just tape on the wall.
+			</p>
+		</div>
 
 		<!-- Shot Sequence Visualization Panel -->
 		{#if showVisualizationControls}
@@ -2124,6 +2685,80 @@
 							/>
 						</div>
 						
+						<!-- Auto Next Round Settings -->
+						<div class="border-t border-gray-700 pt-4 mt-4">
+							<div class="flex items-center gap-3 mb-4">
+								<input
+									id="auto-next-round"
+									type="checkbox"
+									bind:checked={shotTimerConfig.autoNextRound}
+									class="w-5 h-5"
+								/>
+								<label for="auto-next-round" class="text-sm font-semibold text-gray-300">
+									Enable Automatic Next Round
+								</label>
+							</div>
+							
+							{#if shotTimerConfig.autoNextRound}
+								<div class="space-y-3 ml-8">
+									<!-- Round Count -->
+									<div>
+										<label for="round-count" class="block text-sm text-gray-400 mb-2">
+											Number of Rounds: {shotTimerConfig.roundCount}
+										</label>
+										<input
+											id="round-count"
+											type="number"
+											min="1"
+											max="100"
+											value={shotTimerConfig.roundCount}
+											oninput={(e) => {
+												const val = parseInt(e.target.value);
+												if (!isNaN(val) && val > 0 && val <= 100) {
+													shotTimerConfig.roundCount = val;
+													shotTimerConfig = { ...shotTimerConfig };
+												}
+											}}
+											class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+										/>
+									</div>
+									
+									<!-- Reset Duration -->
+									<div>
+										<label for="reset-duration" class="block text-sm text-gray-400 mb-2">
+											Reset Duration: {(shotTimerConfig.resetDuration / 1000).toFixed(1)}s
+										</label>
+										<input
+											id="reset-duration"
+											type="range"
+											min="1"
+											max="10"
+											step="0.5"
+											value={shotTimerConfig.resetDuration / 1000}
+											oninput={(e) => {
+												const val = parseFloat(e.target.value) * 1000;
+												if (!isNaN(val) && val >= 1000 && val <= 10000) {
+													shotTimerConfig.resetDuration = val;
+													shotTimerConfig = { ...shotTimerConfig };
+												}
+											}}
+											class="w-full"
+										/>
+										<p class="text-xs text-gray-500 mt-1">Time between rounds before next drill starts</p>
+									</div>
+								</div>
+							{/if}
+						</div>
+						
+						<!-- Round Counter Display -->
+						{#if shotTimerConfig.autoNextRound && currentRound > 0}
+							<div class="mt-4 pt-4 border-t border-gray-700">
+								<p class="text-sm text-gray-400 text-center">
+									Round {currentRound} of {shotTimerConfig.roundCount}
+								</p>
+							</div>
+						{/if}
+						
 						<!-- Start Button -->
 						<button
 							onclick={shotTimerSession.reps.length === 0 ? startSession : startDrill}
@@ -2150,6 +2785,9 @@
 				{:else if shotTimerPhase === 'waiting'}
 					<!-- Waiting for beep -->
 					<div class="text-center py-8">
+						{#if shotTimerConfig.autoNextRound && currentRound > 0}
+							<div class="text-sm text-gray-400 mb-2">Round {currentRound} of {shotTimerConfig.roundCount}</div>
+						{/if}
 						<div class="inline-block w-3 h-3 bg-yellow-500 rounded-full animate-pulse mb-4"></div>
 						<p class="text-lg font-semibold mb-4">Get ready... Timer will beep soon</p>
 						<button
@@ -2163,6 +2801,9 @@
 					<!-- Timer active -->
 					{@const _ = timerDisplayUpdate} <!-- Trigger reactivity -->
 					<div class="text-center py-8 border-2 border-green-500 rounded-lg">
+						{#if shotTimerConfig.autoNextRound && currentRound > 0}
+							<div class="text-sm text-gray-400 mb-2">Round {currentRound} of {shotTimerConfig.roundCount}</div>
+						{/if}
 						<div class="text-5xl font-bold font-mono text-green-500 mb-4">
 							{formatTime(getCurrentElapsed())}s
 						</div>
@@ -2178,6 +2819,14 @@
 					<!-- Rep complete -->
 					{@const lastRep = shotTimerSession.reps[shotTimerSession.reps.length - 1]}
 					<div class="space-y-4">
+						{#if shotTimerConfig.autoNextRound && currentRound > 0}
+							<div class="text-center mb-2">
+								<div class="text-sm text-gray-400">Round {currentRound} of {shotTimerConfig.roundCount}</div>
+								{#if currentRound >= shotTimerConfig.roundCount}
+									<div class="text-lg font-semibold text-green-500 mt-2">Session Complete!</div>
+								{/if}
+							</div>
+						{/if}
 						<div class="text-center py-4">
 							<div class="text-sm text-gray-400 mb-2">Draw Time:</div>
 							<div class="text-4xl font-bold font-mono text-green-500 mb-4">
@@ -2192,17 +2841,39 @@
 								{/if}
 							</div>
 						</div>
+						
+						{#if shotTimerConfig.autoNextRound && currentRound < shotTimerConfig.roundCount && autoNextCountdown !== null}
+							<div class="bg-blue-900/30 border border-blue-500 rounded-lg p-4 text-center">
+								<div class="text-sm text-gray-400 mb-2">Next round starting in:</div>
+								<div class="text-3xl font-bold font-mono text-blue-400">
+									{(autoNextCountdown / 1000).toFixed(1)}s
+								</div>
+							</div>
+						{/if}
+						
 						<div class="flex gap-3">
-							<button
-								onclick={nextRep}
-								class="flex-1 bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold"
-							>
-								Next Rep
-							</button>
+							{#if !shotTimerConfig.autoNextRound || currentRound >= shotTimerConfig.roundCount}
+								<button
+									onclick={nextRep}
+									class="flex-1 bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold"
+									disabled={shotTimerConfig.autoNextRound && currentRound >= shotTimerConfig.roundCount}
+								>
+									Next Rep
+								</button>
+							{/if}
 							<button
 								onclick={() => {
 									showSessionStats = true;
 									shotTimerPhase = 'idle';
+									if (shotTimerAutoNextTimeout) {
+										clearTimeout(shotTimerAutoNextTimeout);
+										shotTimerAutoNextTimeout = null;
+									}
+									autoNextCountdown = null;
+									// Reset round counter if session was completed
+									if (shotTimerConfig.autoNextRound && currentRound >= shotTimerConfig.roundCount) {
+										currentRound = 0;
+									}
 								}}
 								class="flex-1 bg-gray-600 hover:bg-gray-700 px-6 py-3 rounded-lg font-semibold"
 							>
@@ -2725,6 +3396,18 @@
 							Shot Sequence
 						</button>
 						<button
+							onclick={() => showDiagnosticOverlay = !showDiagnosticOverlay}
+							class="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
+						>
+							{showDiagnosticOverlay ? 'Hide' : 'Show'} Diagnostic
+						</button>
+						<button
+							onclick={() => showDebugOverlay = !showDebugOverlay}
+							class="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
+						>
+							{showDebugOverlay ? 'Hide' : 'Show'} Debug
+						</button>
+						<button
 							onclick={clearHits}
 							class="bg-red-600 hover:bg-red-700 px-6 py-3 rounded-lg font-semibold min-w-[140px]"
 						>
@@ -3057,6 +3740,80 @@
 									/>
 								</div>
 								
+								<!-- Auto Next Round Settings -->
+								<div class="border-t border-gray-700 pt-4 mt-4">
+									<div class="flex items-center gap-3 mb-4">
+										<input
+											id="auto-next-round-desktop"
+											type="checkbox"
+											bind:checked={shotTimerConfig.autoNextRound}
+											class="w-5 h-5"
+										/>
+										<label for="auto-next-round-desktop" class="text-sm font-semibold text-gray-300">
+											Enable Automatic Next Round
+										</label>
+									</div>
+									
+									{#if shotTimerConfig.autoNextRound}
+										<div class="space-y-3 ml-8">
+											<!-- Round Count -->
+											<div>
+												<label for="round-count-desktop" class="block text-sm text-gray-400 mb-2">
+													Number of Rounds: {shotTimerConfig.roundCount}
+												</label>
+												<input
+													id="round-count-desktop"
+													type="number"
+													min="1"
+													max="100"
+													value={shotTimerConfig.roundCount}
+													oninput={(e) => {
+														const val = parseInt(e.target.value);
+														if (!isNaN(val) && val > 0 && val <= 100) {
+															shotTimerConfig.roundCount = val;
+															shotTimerConfig = { ...shotTimerConfig };
+														}
+													}}
+													class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+												/>
+											</div>
+											
+											<!-- Reset Duration -->
+											<div>
+												<label for="reset-duration-desktop" class="block text-sm text-gray-400 mb-2">
+													Reset Duration: {(shotTimerConfig.resetDuration / 1000).toFixed(1)}s
+												</label>
+												<input
+													id="reset-duration-desktop"
+													type="range"
+													min="1"
+													max="10"
+													step="0.5"
+													value={shotTimerConfig.resetDuration / 1000}
+													oninput={(e) => {
+														const val = parseFloat(e.target.value) * 1000;
+														if (!isNaN(val) && val >= 1000 && val <= 10000) {
+															shotTimerConfig.resetDuration = val;
+															shotTimerConfig = { ...shotTimerConfig };
+														}
+													}}
+													class="w-full"
+												/>
+												<p class="text-xs text-gray-500 mt-1">Time between rounds before next drill starts</p>
+											</div>
+										</div>
+									{/if}
+								</div>
+								
+								<!-- Round Counter Display -->
+								{#if shotTimerConfig.autoNextRound && currentRound > 0}
+									<div class="mt-4 pt-4 border-t border-gray-700">
+										<p class="text-sm text-gray-400 text-center">
+											Round {currentRound} of {shotTimerConfig.roundCount}
+										</p>
+									</div>
+								{/if}
+								
 								<!-- Start Button -->
 								<button
 									onclick={shotTimerSession.reps.length === 0 ? startSession : startDrill}
@@ -3083,6 +3840,9 @@
 						{:else if shotTimerPhase === 'waiting'}
 							<!-- Waiting for beep -->
 							<div class="text-center py-8">
+								{#if shotTimerConfig.autoNextRound && currentRound > 0}
+									<div class="text-sm text-gray-400 mb-2">Round {currentRound} of {shotTimerConfig.roundCount}</div>
+								{/if}
 								<div class="inline-block w-3 h-3 bg-yellow-500 rounded-full animate-pulse mb-4"></div>
 								<p class="text-lg font-semibold mb-4">Get ready... Timer will beep soon</p>
 								<button
@@ -3096,6 +3856,9 @@
 							<!-- Timer active -->
 							{@const _ = timerDisplayUpdate} <!-- Trigger reactivity -->
 							<div class="text-center py-8 border-2 border-green-500 rounded-lg">
+								{#if shotTimerConfig.autoNextRound && currentRound > 0}
+									<div class="text-sm text-gray-400 mb-2">Round {currentRound} of {shotTimerConfig.roundCount}</div>
+								{/if}
 								<div class="text-5xl font-bold font-mono text-green-500 mb-4">
 									{formatTime(getCurrentElapsed())}s
 								</div>
@@ -3111,6 +3874,14 @@
 							<!-- Rep complete -->
 							{@const lastRep = shotTimerSession.reps[shotTimerSession.reps.length - 1]}
 							<div class="space-y-4">
+								{#if shotTimerConfig.autoNextRound && currentRound > 0}
+									<div class="text-center mb-2">
+										<div class="text-sm text-gray-400">Round {currentRound} of {shotTimerConfig.roundCount}</div>
+										{#if currentRound >= shotTimerConfig.roundCount}
+											<div class="text-lg font-semibold text-green-500 mt-2">Session Complete!</div>
+										{/if}
+									</div>
+								{/if}
 								<div class="text-center py-4">
 									<div class="text-sm text-gray-400 mb-2">Draw Time:</div>
 									<div class="text-4xl font-bold font-mono text-green-500 mb-4">
@@ -3125,17 +3896,39 @@
 										{/if}
 									</div>
 								</div>
+								
+								{#if shotTimerConfig.autoNextRound && currentRound < shotTimerConfig.roundCount && autoNextCountdown !== null}
+									<div class="bg-blue-900/30 border border-blue-500 rounded-lg p-4 text-center">
+										<div class="text-sm text-gray-400 mb-2">Next round starting in:</div>
+										<div class="text-3xl font-bold font-mono text-blue-400">
+											{(autoNextCountdown / 1000).toFixed(1)}s
+										</div>
+									</div>
+								{/if}
+								
 								<div class="flex gap-3">
-									<button
-										onclick={nextRep}
-										class="flex-1 bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold"
-									>
-										Next Rep
-									</button>
+									{#if !shotTimerConfig.autoNextRound || currentRound >= shotTimerConfig.roundCount}
+										<button
+											onclick={nextRep}
+											class="flex-1 bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold"
+											disabled={shotTimerConfig.autoNextRound && currentRound >= shotTimerConfig.roundCount}
+										>
+											Next Rep
+										</button>
+									{/if}
 									<button
 										onclick={() => {
 											showSessionStats = true;
 											shotTimerPhase = 'idle';
+											if (shotTimerAutoNextTimeout) {
+												clearTimeout(shotTimerAutoNextTimeout);
+												shotTimerAutoNextTimeout = null;
+											}
+											autoNextCountdown = null;
+											// Reset round counter if session was completed
+											if (shotTimerConfig.autoNextRound && currentRound >= shotTimerConfig.roundCount) {
+												currentRound = 0;
+											}
 										}}
 										class="flex-1 bg-gray-600 hover:bg-gray-700 px-6 py-3 rounded-lg font-semibold"
 									>
@@ -3441,6 +4234,16 @@
 	
 	.status-badge.info {
 		background: rgba(99, 102, 241, 0.9);
+	}
+	
+	.status-badge.zoom-reset {
+		background: rgba(139, 92, 246, 0.9);
+		cursor: pointer;
+		pointer-events: auto;
+	}
+	
+	.status-badge.zoom-reset:active {
+		transform: scale(0.95);
 	}
 	
 	@keyframes pulse {
