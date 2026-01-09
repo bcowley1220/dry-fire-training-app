@@ -2342,9 +2342,9 @@
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10h6v4H9z" />
 						</svg>
 						Stop
-					</button>
+			</button>
 					{#if !calibrationMode}
-						<button
+			<button 
 				onclick={startCalibration}
 							class="glass border-0 backdrop-blur-xl shadow-lg px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-1.5 bg-primary/20 hover:bg-primary/30 text-primary"
 			>
@@ -2358,7 +2358,7 @@
 			{/if}
 		</div>
 	</div>
-
+	
 				<!-- Status Pills -->
 				<div class="flex flex-wrap gap-2 justify-center">
 					<div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs {isStreaming ? 'bg-success/20 text-success border-success/30' : 'bg-secondary/50 text-foreground border-border'}">
@@ -2418,13 +2418,13 @@
 										</div>
 										<span class="text-xs text-muted-foreground">{new Date(hit.timestamp).toLocaleTimeString()}</span>
 									</div>
-								{/each}
+							{/each}
 							</div>
 						</div>
-					{/if}
+						{/if}
 				</div>
-			</div>
-		{/if}
+					</div>
+				{/if}
 	</main>
 
 	<!-- Bottom Action Bar -->
@@ -2432,7 +2432,7 @@
 		<div class="fixed bottom-0 left-0 right-0 z-40 safe-area-pb">
 			<div class="glass border-t border-border transition-all duration-300 ease-out {actionBarExpanded ? 'pb-4' : 'pb-0'}">
 				<!-- Toggle Handle -->
-				<button
+					<button
 					onclick={() => actionBarExpanded = !actionBarExpanded}
 					class="w-full py-2 flex items-center justify-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
 				>
@@ -2440,38 +2440,38 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
 					</svg>
 					<span class="text-xs font-medium">{actionBarExpanded ? 'Hide Controls' : 'More Controls'}</span>
-				</button>
+					</button>
 
 				<!-- Main Quick Actions -->
 				<div class="px-4 pb-3 flex justify-center gap-3">
-					<button
-						onclick={startCalibration}
+				<button
+					onclick={startCalibration}
 						disabled={calibrationMode || !isStreaming}
 						class="flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all duration-200 active:scale-95 bg-primary/20 hover:bg-primary/30 text-primary border-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
-					>
+				>
 						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
 						</svg>
 						<span class="text-xs font-medium">Calibrate</span>
-					</button>
-					<button
+				</button>
+				<button
 						onclick={() => showZoneSettings = !showZoneSettings}
 						class="flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all duration-200 active:scale-95 bg-secondary hover:bg-secondary/80 text-foreground border-border"
-					>
+				>
 						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
 						</svg>
 						<span class="text-xs font-medium">Zones</span>
-					</button>
-					<button
+				</button>
+				<button
 						onclick={() => showShotTimer = !showShotTimer}
 						class="flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all duration-200 active:scale-95 bg-warning/20 hover:bg-warning/30 text-warning border-warning/30"
-					>
+				>
 						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
 						</svg>
 						<span class="text-xs font-medium">Timer</span>
-					</button>
+				</button>
 					<button
 						onclick={clearHits}
 						disabled={hits.length === 0}
@@ -2488,35 +2488,35 @@
 				{#if actionBarExpanded}
 					<div class="px-4 pt-3 border-t border-border/50 animate-fade-in">
 						<div class="grid grid-cols-4 gap-3 max-w-md mx-auto">
-							<button
+				<button
 								onclick={clearCalibration}
 								disabled={!targetBoundary}
 								class="flex flex-col items-center gap-1.5 rounded-xl border p-2.5 transition-all duration-200 active:scale-95 bg-secondary hover:bg-secondary/80 text-foreground border-border disabled:opacity-50 disabled:cursor-not-allowed"
-							>
+				>
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
 								</svg>
 								<span class="text-[10px] font-medium">Reset Cal</span>
-							</button>
-							<button
+				</button>
+				<button
 								onclick={() => { isSetupComplete = false; }}
 								class="flex flex-col items-center gap-1.5 rounded-xl border p-2.5 transition-all duration-200 active:scale-95 bg-secondary hover:bg-secondary/80 text-foreground border-border"
-							>
+				>
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
 								</svg>
 								<span class="text-[10px] font-medium">Target</span>
-							</button>
-							<button
-								onclick={() => showVisualizationControls = !showVisualizationControls}
+				</button>
+				<button
+					onclick={() => showVisualizationControls = !showVisualizationControls}
 								class="flex flex-col items-center gap-1.5 rounded-xl border p-2.5 transition-all duration-200 active:scale-95 bg-secondary hover:bg-secondary/80 text-foreground border-border"
-							>
+				>
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
 								</svg>
 								<span class="text-[10px] font-medium">Sequence</span>
-							</button>
-							<button
+				</button>
+				<button
 								onclick={() => {}}
 								class="flex flex-col items-center gap-1.5 rounded-xl border p-2.5 transition-all duration-200 active:scale-95 bg-secondary hover:bg-secondary/80 text-foreground border-border"
 							>
@@ -2525,36 +2525,1333 @@
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
 								</svg>
 								<span class="text-[10px] font-medium">Settings</span>
-							</button>
+				</button>
 						</div>
 
 						<!-- Debug Section -->
 						<div class="mt-4 pt-3 border-t border-border/50 flex justify-center gap-3">
-							<button
+				<button
 								onclick={() => showDiagnosticOverlay = !showDiagnosticOverlay}
 								class="text-muted-foreground hover:text-foreground text-sm flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-secondary/50 transition-colors"
-							>
+				>
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
 								</svg>
 								Diagnostic
-							</button>
-							<button
+				</button>
+				<button
 								onclick={() => showDebugOverlay = !showDebugOverlay}
 								class="text-muted-foreground hover:text-foreground text-sm flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-secondary/50 transition-colors"
-							>
+				>
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
 								</svg>
 								Debug
+				</button>
+		</div>
+					</div>
+				{/if}
+
+				<!-- Zone Settings Panel - Mobile (in bottom action bar) -->
+		{#if showZoneSettings}
+					<div class="px-4 pt-3 border-t border-border/50 animate-fade-in max-h-[50vh] overflow-y-auto md:hidden">
+						<div class="bg-secondary/50 rounded-lg p-4 mb-4">
+				<div class="flex items-center justify-between mb-4">
+					<h3 class="text-lg font-semibold">Custom Zone Settings</h3>
+					<button
+									onclick={() => showZoneSettings = false}
+									class="bg-secondary hover:bg-secondary/80 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+									aria-label="Close zone settings"
+					>
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+									</svg>
+					</button>
+				</div>
+				<div class="space-y-6">
+					{#each ['A', 'C', 'D'] as zoneName}
+						{@const zone = zones[zoneName]}
+									<div class="border border-border rounded-lg p-4 bg-background/50">
+							<div class="flex items-center gap-3 mb-3">
+								<div
+									class="w-6 h-6 rounded border-2"
+									style="background-color: {zone.color}; border-color: {zone.color};"
+								></div>
+								<h4 class="text-md font-semibold" style="color: {zone.color}">
+									{zoneName}-zone ({zone.points} pts)
+								</h4>
+							</div>
+							<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+								<!-- Points -->
+								<div>
+												<label for="points-{zoneName}-mobile" class="block text-sm text-muted-foreground mb-1">Points</label>
+									<input
+													id="points-{zoneName}-mobile"
+										type="number"
+										min="0"
+										max="10"
+										value={zone.points}
+										oninput={(e) => updateZonePoints(zoneName, e.target.value)}
+													class="w-full bg-background border border-border rounded px-3 py-2 text-foreground"
+									/>
+								</div>
+								<!-- X-axis bounds -->
+								<div>
+												<div class="block text-sm text-muted-foreground mb-1">
+										X-axis: {zone.bounds.x[0].toFixed(2)} - {zone.bounds.x[1].toFixed(2)}
+									</div>
+									<div class="space-y-2">
+										<div>
+														<label for="x-min-{zoneName}-mobile" class="text-xs text-muted-foreground">Min X:</label>
+											<input
+															id="x-min-{zoneName}-mobile"
+												type="range"
+												min="0"
+												max="1"
+												step="0.01"
+												value={zone.bounds.x[0]}
+												oninput={(e) => updateZoneBounds(zoneName, 'x', 0, e.target.value)}
+												class="w-full"
+											/>
+										</div>
+										<div>
+														<label for="x-max-{zoneName}-mobile" class="text-xs text-muted-foreground">Max X:</label>
+											<input
+															id="x-max-{zoneName}-mobile"
+												type="range"
+												min="0"
+												max="1"
+												step="0.01"
+												value={zone.bounds.x[1]}
+												oninput={(e) => updateZoneBounds(zoneName, 'x', 1, e.target.value)}
+												class="w-full"
+											/>
+										</div>
+									</div>
+								</div>
+								<!-- Y-axis bounds -->
+								<div>
+												<div class="block text-sm text-muted-foreground mb-1">
+										Y-axis: {zone.bounds.y[0].toFixed(2)} - {zone.bounds.y[1].toFixed(2)}
+									</div>
+									<div class="space-y-2">
+										<div>
+														<label for="y-min-{zoneName}-mobile" class="text-xs text-muted-foreground">Min Y:</label>
+											<input
+															id="y-min-{zoneName}-mobile"
+												type="range"
+												min="0"
+												max="1"
+												step="0.01"
+												value={zone.bounds.y[0]}
+												oninput={(e) => updateZoneBounds(zoneName, 'y', 0, e.target.value)}
+												class="w-full"
+											/>
+										</div>
+										<div>
+														<label for="y-max-{zoneName}-mobile" class="text-xs text-muted-foreground">Max Y:</label>
+											<input
+															id="y-max-{zoneName}-mobile"
+												type="range"
+												min="0"
+												max="1"
+												step="0.01"
+												value={zone.bounds.y[1]}
+												oninput={(e) => updateZoneBounds(zoneName, 'y', 1, e.target.value)}
+												class="w-full"
+											/>
+										</div>
+									</div>
+								</div>
+								<!-- Zone preview info -->
+											<div class="text-xs text-muted-foreground">
+									<p>Zone covers:</p>
+									<p>
+										{((zone.bounds.x[1] - zone.bounds.x[0]) * 100).toFixed(0)}% width ×{' '}
+										{((zone.bounds.y[1] - zone.bounds.y[0]) * 100).toFixed(0)}% height
+									</p>
+								</div>
+							</div>
+						</div>
+					{/each}
+				</div>
+							<div class="flex items-center justify-between mt-4 pt-4 border-t border-border">
+								<p class="text-xs text-muted-foreground">
+					💡 Tip: Zones are checked from innermost (A) to outermost (D). Make sure A-zone is inside C-zone,
+					and C-zone is inside D-zone for best results.
+				</p>
+								<button
+									onclick={resetZonesToDefaults}
+									class="bg-secondary hover:bg-secondary/80 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+								>
+									Reset to Defaults
+								</button>
+			</div>
+							</div>
+						</div>
+					{/if}
+					
+				<!-- Shot Timer Panel - Mobile (in bottom action bar) -->
+				{#if showShotTimer}
+					<div class="px-4 pt-3 border-t border-border/50 animate-fade-in max-h-[50vh] overflow-y-auto md:hidden">
+						<div class="bg-secondary/50 rounded-lg p-4 mb-4">
+							<div class="flex items-center justify-between mb-4">
+								<h3 class="text-lg font-semibold">Shot Timer</h3>
+						<button
+									onclick={() => showShotTimer = false}
+									class="bg-secondary hover:bg-secondary/80 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+									aria-label="Close shot timer"
+						>
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+									</svg>
+						</button>
+				</div>
+				
+				{#if !shotTimerActive && shotTimerPhase === 'idle'}
+					<!-- Timer Controls -->
+					<div class="space-y-4">
+						<!-- Random Delay Settings -->
+						<div>
+										<div class="block text-sm text-muted-foreground mb-2">Random Delay (seconds):</div>
+							<div class="flex items-center gap-3">
+								<input
+												id="delay-min-mobile"
+									type="number"
+									min="1"
+									max="10"
+									value={shotTimerConfig.randomDelayMin / 1000}
+									oninput={(e) => {
+										const val = parseFloat(e.target.value) * 1000;
+										if (!isNaN(val) && val > 0 && val <= shotTimerConfig.randomDelayMax) {
+											shotTimerConfig.randomDelayMin = val;
+											shotTimerConfig = { ...shotTimerConfig };
+										}
+									}}
+												class="w-20 bg-background border border-border rounded px-3 py-2 text-foreground"
+								/>
+											<span class="text-muted-foreground">to</span>
+								<input
+												id="delay-max-mobile"
+									type="number"
+									min="1"
+									max="10"
+									value={shotTimerConfig.randomDelayMax / 1000}
+									oninput={(e) => {
+										const val = parseFloat(e.target.value) * 1000;
+										if (!isNaN(val) && val > 0 && val >= shotTimerConfig.randomDelayMin) {
+											shotTimerConfig.randomDelayMax = val;
+											shotTimerConfig = { ...shotTimerConfig };
+										}
+									}}
+												class="w-20 bg-background border border-border rounded px-3 py-2 text-foreground"
+								/>
+							</div>
+										<p class="text-xs text-muted-foreground mt-1">Timer will beep randomly between these times</p>
+						</div>
+						
+						<!-- Volume Control -->
+						<div>
+										<label for="beep-volume-mobile" class="block text-sm text-muted-foreground mb-2">
+								Beep Volume: {Math.round(shotTimerConfig.beepVolume * 100)}%
+							</label>
+							<input
+											id="beep-volume-mobile"
+								type="range"
+								min="0"
+								max="100"
+								value={shotTimerConfig.beepVolume * 100}
+								oninput={(e) => {
+									shotTimerConfig.beepVolume = e.target.value / 100;
+									shotTimerConfig = { ...shotTimerConfig };
+								}}
+								class="w-full"
+							/>
+						</div>
+						
+						<!-- Auto Next Round Settings -->
+									<div class="border-t border-border pt-4 mt-4">
+							<div class="flex items-center gap-3 mb-4">
+								<input
+												id="auto-next-round-mobile"
+									type="checkbox"
+									bind:checked={shotTimerConfig.autoNextRound}
+									class="w-5 h-5"
+								/>
+											<label for="auto-next-round-mobile" class="text-sm font-semibold">
+									Enable Automatic Next Round
+								</label>
+							</div>
+							
+							{#if shotTimerConfig.autoNextRound}
+								<div class="space-y-3 ml-8">
+									<!-- Round Count -->
+									<div>
+													<label for="round-count-mobile" class="block text-sm text-muted-foreground mb-2">
+											Number of Rounds: {shotTimerConfig.roundCount}
+										</label>
+										<input
+														id="round-count-mobile"
+											type="number"
+											min="1"
+											max="100"
+											value={shotTimerConfig.roundCount}
+											oninput={(e) => {
+												const val = parseInt(e.target.value);
+												if (!isNaN(val) && val > 0 && val <= 100) {
+													shotTimerConfig.roundCount = val;
+													shotTimerConfig = { ...shotTimerConfig };
+												}
+											}}
+														class="w-full bg-background border border-border rounded px-3 py-2 text-foreground"
+										/>
+									</div>
+									
+									<!-- Reset Duration -->
+									<div>
+													<label for="reset-duration-mobile" class="block text-sm text-muted-foreground mb-2">
+											Reset Duration: {(shotTimerConfig.resetDuration / 1000).toFixed(1)}s
+										</label>
+										<input
+														id="reset-duration-mobile"
+											type="range"
+											min="1"
+											max="10"
+											step="0.5"
+											value={shotTimerConfig.resetDuration / 1000}
+											oninput={(e) => {
+												const val = parseFloat(e.target.value) * 1000;
+												if (!isNaN(val) && val >= 1000 && val <= 10000) {
+													shotTimerConfig.resetDuration = val;
+													shotTimerConfig = { ...shotTimerConfig };
+												}
+											}}
+											class="w-full"
+										/>
+													<p class="text-xs text-muted-foreground mt-1">Time between rounds before next drill starts</p>
+									</div>
+								</div>
+							{/if}
+						</div>
+						
+						<!-- Round Counter Display -->
+						{#if shotTimerConfig.autoNextRound && currentRound > 0}
+										<div class="mt-4 pt-4 border-t border-border">
+											<p class="text-sm text-muted-foreground text-center">
+									Round {currentRound} of {shotTimerConfig.roundCount}
+								</p>
+							</div>
+						{/if}
+						
+						<!-- Start Button -->
+						<button
+							onclick={shotTimerSession.reps.length === 0 ? startSession : startDrill}
+							disabled={shotTimerActive}
+										class="w-full bg-primary hover:bg-primary/90 disabled:bg-secondary disabled:cursor-not-allowed px-6 py-4 rounded-lg font-semibold text-lg transition-colors"
+						>
+							I'm Ready - Start Drill
+						</button>
+						
+						{#if shotTimerSession.reps.length > 0}
+										<div class="mt-4 pt-4 border-t border-border">
+											<p class="text-sm text-muted-foreground mb-2">
+									Session: {shotTimerSession.reps.length} rep{shotTimerSession.reps.length !== 1 ? 's' : ''} completed
+								</p>
+								<button
+									onclick={() => showSessionStats = !showSessionStats}
+												class="w-full bg-secondary hover:bg-secondary/80 px-4 py-2 rounded-lg font-semibold text-sm transition-colors"
+								>
+									{showSessionStats ? 'Hide' : 'View'} Session Stats
+								</button>
+							</div>
+						{/if}
+					</div>
+				{:else if shotTimerPhase === 'waiting'}
+					<!-- Waiting for beep -->
+					<div class="text-center py-8">
+						{#if shotTimerConfig.autoNextRound && currentRound > 0}
+										<div class="text-sm text-muted-foreground mb-2">Round {currentRound} of {shotTimerConfig.roundCount}</div>
+						{/if}
+									<div class="inline-block w-3 h-3 bg-warning rounded-full animate-pulse mb-4"></div>
+						<p class="text-lg font-semibold mb-4">Get ready... Timer will beep soon</p>
+						<button
+							onclick={cancelDrill}
+										class="bg-destructive hover:bg-destructive/90 px-6 py-2 rounded-lg font-semibold transition-colors"
+						>
+							Cancel Drill
+						</button>
+					</div>
+				{:else if shotTimerPhase === 'active'}
+					<!-- Timer active -->
+					{@const _ = timerDisplayUpdate} <!-- Trigger reactivity -->
+								<div class="text-center py-8 border-2 border-success rounded-lg">
+						{#if shotTimerConfig.autoNextRound && currentRound > 0}
+										<div class="text-sm text-muted-foreground mb-2">Round {currentRound} of {shotTimerConfig.roundCount}</div>
+						{/if}
+									<div class="text-5xl font-bold font-mono text-success mb-4">
+							{formatTime(getCurrentElapsed())}s
+						</div>
+						<p class="text-xl font-semibold mb-4">⏱️ TIMER ACTIVE - SHOOT!</p>
+						<button
+							onclick={cancelDrill}
+										class="bg-destructive hover:bg-destructive/90 px-6 py-2 rounded-lg font-semibold transition-colors"
+						>
+							Cancel
+						</button>
+					</div>
+				{:else if shotTimerPhase === 'complete'}
+					<!-- Rep complete -->
+					{@const lastRep = shotTimerSession.reps[shotTimerSession.reps.length - 1]}
+					<div class="space-y-4">
+						{#if shotTimerConfig.autoNextRound && currentRound > 0}
+							<div class="text-center mb-2">
+											<div class="text-sm text-muted-foreground">Round {currentRound} of {shotTimerConfig.roundCount}</div>
+								{#if currentRound >= shotTimerConfig.roundCount}
+												<div class="text-lg font-semibold text-success mt-2">Session Complete!</div>
+								{/if}
+							</div>
+						{/if}
+						<div class="text-center py-4">
+										<div class="text-sm text-muted-foreground mb-2">Draw Time:</div>
+										<div class="text-4xl font-bold font-mono text-success mb-4">
+								{formatTime(lastRep.drawTime)}s
+							</div>
+							<div class="flex items-center justify-center gap-4 text-lg">
+								<span style="color: {lastRep.hit.zoneColor}; font-weight: 600;">
+									{lastRep.hit.zone}
+								</span>
+								{#if lastRep.hit.points !== null}
+												<span class="text-warning font-semibold">+{lastRep.hit.points} pts</span>
+								{/if}
+							</div>
+						</div>
+						
+						{#if shotTimerConfig.autoNextRound && currentRound < shotTimerConfig.roundCount && autoNextCountdown !== null}
+										<div class="bg-primary/20 border border-primary rounded-lg p-4 text-center">
+											<div class="text-sm text-muted-foreground mb-2">Next round starting in:</div>
+											<div class="text-3xl font-bold font-mono text-primary">
+									{(autoNextCountdown / 1000).toFixed(1)}s
+								</div>
+							</div>
+						{/if}
+						
+						<div class="flex gap-3">
+							{#if !shotTimerConfig.autoNextRound || currentRound >= shotTimerConfig.roundCount}
+								<button
+									onclick={nextRep}
+												class="flex-1 bg-primary hover:bg-primary/90 px-6 py-3 rounded-lg font-semibold transition-colors"
+									disabled={shotTimerConfig.autoNextRound && currentRound >= shotTimerConfig.roundCount}
+								>
+									Next Rep
+								</button>
+							{/if}
+							<button
+								onclick={() => {
+									showSessionStats = true;
+									shotTimerPhase = 'idle';
+									if (shotTimerAutoNextTimeout) {
+										clearTimeout(shotTimerAutoNextTimeout);
+										shotTimerAutoNextTimeout = null;
+									}
+									autoNextCountdown = null;
+									// Reset round counter if session was completed
+									if (shotTimerConfig.autoNextRound && currentRound >= shotTimerConfig.roundCount) {
+										currentRound = 0;
+									}
+								}}
+											class="flex-1 bg-secondary hover:bg-secondary/80 px-6 py-3 rounded-lg font-semibold transition-colors"
+							>
+								View Stats
 							</button>
+						</div>
+			</div>
+		{/if}
+
+							<!-- Session Statistics - Mobile -->
+		{#if showSessionStats && shotTimerSession.reps.length > 0}
+								<div class="mt-6 pt-6 border-t border-border">
+									<h4 class="text-lg font-semibold mb-4">Draw Timer Session</h4>
+				
+				<!-- Session Stats -->
+									<div class="grid grid-cols-2 gap-4 mb-6">
+										<div class="bg-background/50 rounded-lg p-4 text-center">
+											<div class="text-sm text-muted-foreground mb-1">Reps</div>
+						<div class="text-2xl font-bold font-mono">{shotTimerSession.reps.length}</div>
+					</div>
+										<div class="bg-background/50 rounded-lg p-4 text-center">
+											<div class="text-sm text-muted-foreground mb-1">Average</div>
+						<div class="text-2xl font-bold font-mono">{formatTime(calculateAverage())}s</div>
+					</div>
+										<div class="bg-background/50 rounded-lg p-4 text-center">
+											<div class="text-sm text-muted-foreground mb-1">Best</div>
+											<div class="text-2xl font-bold font-mono text-success">{formatTime(calculateBest())}s</div>
+					</div>
+										<div class="bg-background/50 rounded-lg p-4 text-center">
+											<div class="text-sm text-muted-foreground mb-1">Worst</div>
+											<div class="text-2xl font-bold font-mono text-destructive">{formatTime(calculateWorst())}s</div>
+					</div>
+				</div>
+				
+				<!-- Accuracy Breakdown -->
+				{#if calculateAccuracyByZone().length > 0}
+					<div class="mb-6">
+											<h5 class="text-md font-semibold mb-3">Accuracy</h5>
+						<div class="space-y-2">
+							{#each calculateAccuracyByZone() as zone}
+													<div class="flex justify-between items-center py-2 border-b border-border">
+									<span style="color: {zone.color}; font-weight: 600;">{zone.name}</span>
+														<span class="text-foreground">
+										{zone.count}/{shotTimerSession.reps.length} ({zone.percentage}%)
+									</span>
+								</div>
+							{/each}
 						</div>
 					</div>
 				{/if}
+				
+				<!-- Individual Reps List -->
+				<div class="mb-6">
+										<h5 class="text-md font-semibold mb-3">Individual Reps</h5>
+										<div class="space-y-2 max-h-48 overflow-y-auto">
+								{#each shotTimerSession.reps as rep, index}
+												<div class="flex justify-between items-center py-2 px-3 bg-background/50 rounded text-sm">
+													<div class="flex items-center gap-3">
+														<span class="text-muted-foreground">#{index + 1}</span>
+														<span class="font-mono">{formatTime(rep.drawTime)}s</span>
+													</div>
+													<div class="flex items-center gap-2">
+														<span style="color: {rep.hit.zoneColor}; font-weight: 600;">{rep.hit.zone}</span>
+														{#if rep.hit.points !== null}
+															<span class="text-muted-foreground">+{rep.hit.points}</span>
+														{/if}
+													</div>
+												</div>
+								{/each}
+					</div>
+				</div>
+				
+				<!-- Session Actions -->
+				<div class="flex gap-3">
+					<button
+						onclick={() => {
+							showSessionStats = false;
+												shotTimerCooldownUntil = null;
+							startDrill();
+						}}
+											class="flex-1 bg-primary hover:bg-primary/90 px-6 py-3 rounded-lg font-semibold transition-colors"
+					>
+											Continue
+					</button>
+					<button
+						onclick={() => {
+							shotTimerSession = { reps: [], startedAt: null };
+							showSessionStats = false;
+							shotTimerPhase = 'idle';
+						}}
+											class="flex-1 bg-secondary hover:bg-secondary/80 px-6 py-3 rounded-lg font-semibold transition-colors"
+					>
+						End Session
+					</button>
+				</div>
 			</div>
-		</div>
 		{/if}
-	</div>
+				</div>
+			</div>
+		{/if}
+
+				<!-- Shot Sequence Visualization Panel - Mobile (in bottom action bar) -->
+				{#if showVisualizationControls}
+					<div class="px-4 pt-3 border-t border-border/50 animate-fade-in max-h-[50vh] overflow-y-auto md:hidden">
+						<div class="bg-secondary/50 rounded-lg p-4 mb-4">
+							<div class="flex items-center justify-between mb-4">
+								<h3 class="text-lg font-semibold">Shot Sequence Visualization</h3>
+								<button
+									onclick={() => showVisualizationControls = false}
+									class="bg-secondary hover:bg-secondary/80 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+									aria-label="Close sequence controls"
+								>
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+									</svg>
+								</button>
+		</div>
+
+						<div class="space-y-4">
+								<!-- Toggle Controls -->
+							<div class="flex items-center gap-3">
+								<input
+										id="show-shot-numbers-mobile"
+										type="checkbox"
+										checked={visualizationState.showShotNumbers}
+										onchange={(e) => {
+											visualizationState.showShotNumbers = e.target.checked;
+											visualizationState = { ...visualizationState };
+										}}
+										class="w-5 h-5"
+									/>
+									<label for="show-shot-numbers-mobile" class="cursor-pointer">
+										Show Shot Numbers
+								</label>
+							</div>
+								
+							<div class="flex items-center gap-3">
+								<input
+										id="show-sequence-lines-mobile"
+										type="checkbox"
+										checked={visualizationState.showSequenceLines}
+										onchange={(e) => {
+											visualizationState.showSequenceLines = e.target.checked;
+											visualizationState = { ...visualizationState };
+										}}
+										class="w-5 h-5"
+									/>
+									<label for="show-sequence-lines-mobile" class="cursor-pointer">
+										Show Sequence Lines
+								</label>
+							</div>
+								
+								<!-- Line Color Picker -->
+							<div class="flex items-center gap-3">
+									<label for="line-color-mobile" class="text-sm">Line Color:</label>
+								<input
+										id="line-color-mobile"
+										type="color"
+										value={visualizationState.lineColor}
+										oninput={(e) => {
+											visualizationState.lineColor = e.target.value;
+											visualizationState = { ...visualizationState };
+										}}
+										class="w-16 h-8 border border-border rounded cursor-pointer"
+									/>
+						</div>
+
+								<!-- Replay Mode Controls -->
+								{#if hits.length > 0}
+									<div class="pt-4 border-t border-border">
+										<label for="replay-slider-mobile" class="block mb-2">
+											Replay Mode:
+										</label>
+										<input
+											id="replay-slider-mobile"
+											type="range"
+											min="0"
+											max={hits.length}
+											value={visualizationState.currentReplayShot}
+											oninput={(e) => {
+												const val = parseInt(e.target.value);
+												visualizationState.currentReplayShot = val;
+												visualizationState.showAllShots = val === 0;
+												visualizationState = { ...visualizationState };
+											}}
+											class="w-full"
+										/>
+										<div class="text-center text-sm text-muted-foreground mt-1">
+											{visualizationState.currentReplayShot === 0 
+												? 'All Shots' 
+												: `Shot ${visualizationState.currentReplayShot} of ${hits.length}`}
+						</div>
+					</div>
+				{/if}
+
+								<!-- Shot Group Analysis -->
+								{#if hits.length >= 2}
+									{@const grouping = calculateShotGrouping(hits)}
+									{#if grouping}
+										<div class="pt-4 border-t border-border">
+											<h4 class="text-md font-semibold mb-3">Shot Group Analysis</h4>
+											<div class="space-y-2">
+												<div class="flex justify-between text-sm">
+													<span class="text-muted-foreground">Group Size (avg):</span>
+													<span class="font-semibold">{grouping.groupSize}</span>
+												</div>
+												<div class="flex justify-between text-sm">
+													<span class="text-muted-foreground">Max Spread:</span>
+													<span class="font-semibold">{grouping.maxSpread}px</span>
+												</div>
+												<div class="flex justify-between text-sm">
+													<span class="text-muted-foreground">Total Shots:</span>
+													<span class="font-semibold">{hits.length}</span>
+												</div>
+											</div>
+						</div>
+					{/if}
+							{/if}
+								
+								<!-- Export Button -->
+								{#if hits.length > 0}
+						<button
+										onclick={exportShotPattern}
+										class="w-full bg-secondary hover:bg-secondary/80 px-4 py-2 rounded-lg font-semibold text-sm transition-colors"
+						>
+										📸 Export Shot Pattern
+						</button>
+					{/if}
+							</div>
+							</div>
+						</div>
+					{/if}
+				</div>
+		</div>
+					{/if}
+				</div>
+
+	<!-- Zone Settings Panel - Desktop (side panel) -->
+				{#if showZoneSettings}
+		<div class="hidden md:block fixed top-0 right-0 h-full w-96 bg-card border-l border-border z-50 shadow-2xl overflow-y-auto">
+			<div class="p-6">
+				<div class="flex items-center justify-between mb-6">
+					<h3 class="text-xl font-semibold">Custom Zone Settings</h3>
+							<button
+						onclick={() => showZoneSettings = false}
+						class="bg-secondary hover:bg-secondary/80 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+						aria-label="Close zone settings"
+							>
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+							</button>
+						</div>
+						<div class="space-y-6">
+							{#each ['A', 'C', 'D'] as zoneName}
+								{@const zone = zones[zoneName]}
+						<div class="border border-border rounded-lg p-4 bg-background/50">
+									<div class="flex items-center gap-3 mb-3">
+										<div
+											class="w-6 h-6 rounded border-2"
+											style="background-color: {zone.color}; border-color: {zone.color};"
+										></div>
+										<h4 class="text-md font-semibold" style="color: {zone.color}">
+											{zoneName}-zone ({zone.points} pts)
+										</h4>
+									</div>
+							<div class="space-y-4">
+										<!-- Points -->
+										<div>
+									<label for="points-{zoneName}-desktop" class="block text-sm text-muted-foreground mb-1">Points</label>
+											<input
+												id="points-{zoneName}-desktop"
+												type="number"
+												min="0"
+												max="10"
+												value={zone.points}
+												oninput={(e) => updateZonePoints(zoneName, e.target.value)}
+										class="w-full bg-background border border-border rounded px-3 py-2 text-foreground"
+											/>
+										</div>
+										<!-- X-axis bounds -->
+										<div>
+									<div class="block text-sm text-muted-foreground mb-1">
+												X-axis: {zone.bounds.x[0].toFixed(2)} - {zone.bounds.x[1].toFixed(2)}
+											</div>
+											<div class="space-y-2">
+												<div>
+											<label for="x-min-{zoneName}-desktop" class="text-xs text-muted-foreground">Min X:</label>
+													<input
+														id="x-min-{zoneName}-desktop"
+														type="range"
+														min="0"
+														max="1"
+														step="0.01"
+														value={zone.bounds.x[0]}
+														oninput={(e) => updateZoneBounds(zoneName, 'x', 0, e.target.value)}
+														class="w-full"
+													/>
+												</div>
+												<div>
+											<label for="x-max-{zoneName}-desktop" class="text-xs text-muted-foreground">Max X:</label>
+													<input
+														id="x-max-{zoneName}-desktop"
+														type="range"
+														min="0"
+														max="1"
+														step="0.01"
+														value={zone.bounds.x[1]}
+														oninput={(e) => updateZoneBounds(zoneName, 'x', 1, e.target.value)}
+														class="w-full"
+													/>
+												</div>
+											</div>
+										</div>
+										<!-- Y-axis bounds -->
+										<div>
+									<div class="block text-sm text-muted-foreground mb-1">
+												Y-axis: {zone.bounds.y[0].toFixed(2)} - {zone.bounds.y[1].toFixed(2)}
+											</div>
+											<div class="space-y-2">
+												<div>
+											<label for="y-min-{zoneName}-desktop" class="text-xs text-muted-foreground">Min Y:</label>
+													<input
+														id="y-min-{zoneName}-desktop"
+														type="range"
+														min="0"
+														max="1"
+														step="0.01"
+														value={zone.bounds.y[0]}
+														oninput={(e) => updateZoneBounds(zoneName, 'y', 0, e.target.value)}
+														class="w-full"
+													/>
+												</div>
+												<div>
+											<label for="y-max-{zoneName}-desktop" class="text-xs text-muted-foreground">Max Y:</label>
+													<input
+														id="y-max-{zoneName}-desktop"
+														type="range"
+														min="0"
+														max="1"
+														step="0.01"
+														value={zone.bounds.y[1]}
+														oninput={(e) => updateZoneBounds(zoneName, 'y', 1, e.target.value)}
+														class="w-full"
+													/>
+												</div>
+											</div>
+										</div>
+										<!-- Zone preview info -->
+								<div class="text-xs text-muted-foreground">
+											<p>Zone covers:</p>
+											<p>
+												{((zone.bounds.x[1] - zone.bounds.x[0]) * 100).toFixed(0)}% width ×{' '}
+												{((zone.bounds.y[1] - zone.bounds.y[0]) * 100).toFixed(0)}% height
+											</p>
+										</div>
+									</div>
+								</div>
+							{/each}
+						</div>
+				<div class="mt-6 pt-6 border-t border-border">
+					<p class="text-xs text-muted-foreground mb-4">
+							💡 Tip: Zones are checked from innermost (A) to outermost (D). Make sure A-zone is inside C-zone,
+							and C-zone is inside D-zone for best results.
+						</p>
+					<button
+						onclick={resetZonesToDefaults}
+						class="w-full bg-secondary hover:bg-secondary/80 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+					>
+						Reset to Defaults
+					</button>
+					</div>
+									</div>
+								</div>
+							{/if}
+							
+	<!-- Shot Timer Panel - Desktop (side panel) -->
+	{#if showShotTimer}
+		<div class="hidden md:block fixed top-0 h-full w-96 bg-card border-l border-border z-50 shadow-2xl overflow-y-auto" style="right: {showZoneSettings ? '384px' : '0'}">
+			<div class="p-6">
+				<div class="flex items-center justify-between mb-6">
+					<h3 class="text-xl font-semibold">Shot Timer</h3>
+								<button
+						onclick={() => showShotTimer = false}
+						class="bg-secondary hover:bg-secondary/80 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+						aria-label="Close shot timer"
+								>
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+								</button>
+						</div>
+						
+						{#if !shotTimerActive && shotTimerPhase === 'idle'}
+							<!-- Timer Controls -->
+							<div class="space-y-4">
+								<!-- Random Delay Settings -->
+								<div>
+							<div class="block text-sm text-muted-foreground mb-2">Random Delay (seconds):</div>
+									<div class="flex items-center gap-3">
+										<input
+											id="delay-min-desktop"
+											type="number"
+											min="1"
+											max="10"
+											value={shotTimerConfig.randomDelayMin / 1000}
+											oninput={(e) => {
+												const val = parseFloat(e.target.value) * 1000;
+												if (!isNaN(val) && val > 0 && val <= shotTimerConfig.randomDelayMax) {
+													shotTimerConfig.randomDelayMin = val;
+													shotTimerConfig = { ...shotTimerConfig };
+												}
+											}}
+									class="w-20 bg-background border border-border rounded px-3 py-2 text-foreground"
+										/>
+								<span class="text-muted-foreground">to</span>
+										<input
+											id="delay-max-desktop"
+											type="number"
+											min="1"
+											max="10"
+											value={shotTimerConfig.randomDelayMax / 1000}
+											oninput={(e) => {
+												const val = parseFloat(e.target.value) * 1000;
+												if (!isNaN(val) && val > 0 && val >= shotTimerConfig.randomDelayMin) {
+													shotTimerConfig.randomDelayMax = val;
+													shotTimerConfig = { ...shotTimerConfig };
+												}
+											}}
+									class="w-20 bg-background border border-border rounded px-3 py-2 text-foreground"
+										/>
+									</div>
+							<p class="text-xs text-muted-foreground mt-1">Timer will beep randomly between these times</p>
+								</div>
+								
+								<!-- Volume Control -->
+								<div>
+							<label for="beep-volume-desktop" class="block text-sm text-muted-foreground mb-2">
+										Beep Volume: {Math.round(shotTimerConfig.beepVolume * 100)}%
+									</label>
+									<input
+										id="beep-volume-desktop"
+										type="range"
+										min="0"
+										max="100"
+										value={shotTimerConfig.beepVolume * 100}
+										oninput={(e) => {
+											shotTimerConfig.beepVolume = e.target.value / 100;
+											shotTimerConfig = { ...shotTimerConfig };
+										}}
+										class="w-full"
+									/>
+								</div>
+								
+								<!-- Auto Next Round Settings -->
+						<div class="border-t border-border pt-4 mt-4">
+									<div class="flex items-center gap-3 mb-4">
+										<input
+											id="auto-next-round-desktop"
+											type="checkbox"
+											bind:checked={shotTimerConfig.autoNextRound}
+											class="w-5 h-5"
+										/>
+								<label for="auto-next-round-desktop" class="text-sm font-semibold">
+											Enable Automatic Next Round
+										</label>
+									</div>
+									
+									{#if shotTimerConfig.autoNextRound}
+										<div class="space-y-3 ml-8">
+											<!-- Round Count -->
+											<div>
+										<label for="round-count-desktop" class="block text-sm text-muted-foreground mb-2">
+													Number of Rounds: {shotTimerConfig.roundCount}
+												</label>
+												<input
+													id="round-count-desktop"
+													type="number"
+													min="1"
+													max="100"
+													value={shotTimerConfig.roundCount}
+													oninput={(e) => {
+														const val = parseInt(e.target.value);
+														if (!isNaN(val) && val > 0 && val <= 100) {
+															shotTimerConfig.roundCount = val;
+															shotTimerConfig = { ...shotTimerConfig };
+														}
+													}}
+											class="w-full bg-background border border-border rounded px-3 py-2 text-foreground"
+												/>
+											</div>
+											
+											<!-- Reset Duration -->
+											<div>
+										<label for="reset-duration-desktop" class="block text-sm text-muted-foreground mb-2">
+													Reset Duration: {(shotTimerConfig.resetDuration / 1000).toFixed(1)}s
+												</label>
+												<input
+													id="reset-duration-desktop"
+													type="range"
+													min="1"
+													max="10"
+													step="0.5"
+													value={shotTimerConfig.resetDuration / 1000}
+													oninput={(e) => {
+														const val = parseFloat(e.target.value) * 1000;
+														if (!isNaN(val) && val >= 1000 && val <= 10000) {
+															shotTimerConfig.resetDuration = val;
+															shotTimerConfig = { ...shotTimerConfig };
+														}
+													}}
+													class="w-full"
+												/>
+										<p class="text-xs text-muted-foreground mt-1">Time between rounds before next drill starts</p>
+											</div>
+										</div>
+									{/if}
+								</div>
+								
+								<!-- Round Counter Display -->
+								{#if shotTimerConfig.autoNextRound && currentRound > 0}
+							<div class="mt-4 pt-4 border-t border-border">
+								<p class="text-sm text-muted-foreground text-center">
+											Round {currentRound} of {shotTimerConfig.roundCount}
+										</p>
+									</div>
+								{/if}
+								
+								<!-- Start Button -->
+								<button
+									onclick={shotTimerSession.reps.length === 0 ? startSession : startDrill}
+									disabled={shotTimerActive}
+							class="w-full bg-primary hover:bg-primary/90 disabled:bg-secondary disabled:cursor-not-allowed px-6 py-4 rounded-lg font-semibold text-lg transition-colors"
+								>
+									I'm Ready - Start Drill
+								</button>
+								
+								{#if shotTimerSession.reps.length > 0}
+							<div class="mt-4 pt-4 border-t border-border">
+								<p class="text-sm text-muted-foreground mb-2">
+											Session: {shotTimerSession.reps.length} rep{shotTimerSession.reps.length !== 1 ? 's' : ''} completed
+										</p>
+										<button
+											onclick={() => showSessionStats = !showSessionStats}
+									class="w-full bg-secondary hover:bg-secondary/80 px-4 py-2 rounded-lg font-semibold text-sm transition-colors"
+										>
+											{showSessionStats ? 'Hide' : 'View'} Session Stats
+										</button>
+									</div>
+								{/if}
+							</div>
+						{:else if shotTimerPhase === 'waiting'}
+							<!-- Waiting for beep -->
+							<div class="text-center py-8">
+								{#if shotTimerConfig.autoNextRound && currentRound > 0}
+							<div class="text-sm text-muted-foreground mb-2">Round {currentRound} of {shotTimerConfig.roundCount}</div>
+								{/if}
+						<div class="inline-block w-3 h-3 bg-warning rounded-full animate-pulse mb-4"></div>
+								<p class="text-lg font-semibold mb-4">Get ready... Timer will beep soon</p>
+								<button
+									onclick={cancelDrill}
+							class="bg-destructive hover:bg-destructive/90 px-6 py-2 rounded-lg font-semibold transition-colors"
+								>
+									Cancel Drill
+								</button>
+							</div>
+						{:else if shotTimerPhase === 'active'}
+							<!-- Timer active -->
+							{@const _ = timerDisplayUpdate} <!-- Trigger reactivity -->
+					<div class="text-center py-8 border-2 border-success rounded-lg">
+								{#if shotTimerConfig.autoNextRound && currentRound > 0}
+							<div class="text-sm text-muted-foreground mb-2">Round {currentRound} of {shotTimerConfig.roundCount}</div>
+								{/if}
+						<div class="text-5xl font-bold font-mono text-success mb-4">
+									{formatTime(getCurrentElapsed())}s
+								</div>
+								<p class="text-xl font-semibold mb-4">⏱️ TIMER ACTIVE - SHOOT!</p>
+								<button
+									onclick={cancelDrill}
+							class="bg-destructive hover:bg-destructive/90 px-6 py-2 rounded-lg font-semibold transition-colors"
+								>
+									Cancel
+								</button>
+							</div>
+						{:else if shotTimerPhase === 'complete'}
+							<!-- Rep complete -->
+							{@const lastRep = shotTimerSession.reps[shotTimerSession.reps.length - 1]}
+							<div class="space-y-4">
+								{#if shotTimerConfig.autoNextRound && currentRound > 0}
+									<div class="text-center mb-2">
+								<div class="text-sm text-muted-foreground">Round {currentRound} of {shotTimerConfig.roundCount}</div>
+										{#if currentRound >= shotTimerConfig.roundCount}
+									<div class="text-lg font-semibold text-success mt-2">Session Complete!</div>
+										{/if}
+									</div>
+								{/if}
+								<div class="text-center py-4">
+							<div class="text-sm text-muted-foreground mb-2">Draw Time:</div>
+							<div class="text-4xl font-bold font-mono text-success mb-4">
+										{formatTime(lastRep.drawTime)}s
+									</div>
+									<div class="flex items-center justify-center gap-4 text-lg">
+										<span style="color: {lastRep.hit.zoneColor}; font-weight: 600;">
+											{lastRep.hit.zone}
+										</span>
+										{#if lastRep.hit.points !== null}
+									<span class="text-warning font-semibold">+{lastRep.hit.points} pts</span>
+										{/if}
+									</div>
+								</div>
+								
+								{#if shotTimerConfig.autoNextRound && currentRound < shotTimerConfig.roundCount && autoNextCountdown !== null}
+							<div class="bg-primary/20 border border-primary rounded-lg p-4 text-center">
+								<div class="text-sm text-muted-foreground mb-2">Next round starting in:</div>
+								<div class="text-3xl font-bold font-mono text-primary">
+											{(autoNextCountdown / 1000).toFixed(1)}s
+										</div>
+									</div>
+								{/if}
+								
+								<div class="flex gap-3">
+									{#if !shotTimerConfig.autoNextRound || currentRound >= shotTimerConfig.roundCount}
+										<button
+											onclick={nextRep}
+									class="flex-1 bg-primary hover:bg-primary/90 px-6 py-3 rounded-lg font-semibold transition-colors"
+											disabled={shotTimerConfig.autoNextRound && currentRound >= shotTimerConfig.roundCount}
+										>
+											Next Rep
+										</button>
+									{/if}
+									<button
+										onclick={() => {
+											showSessionStats = true;
+											shotTimerPhase = 'idle';
+											if (shotTimerAutoNextTimeout) {
+												clearTimeout(shotTimerAutoNextTimeout);
+												shotTimerAutoNextTimeout = null;
+											}
+											autoNextCountdown = null;
+											// Reset round counter if session was completed
+											if (shotTimerConfig.autoNextRound && currentRound >= shotTimerConfig.roundCount) {
+												currentRound = 0;
+											}
+										}}
+								class="flex-1 bg-secondary hover:bg-secondary/80 px-6 py-3 rounded-lg font-semibold transition-colors"
+									>
+										View Stats
+									</button>
+								</div>
+							</div>
+						{/if}
+			</div>
+					</div>
+				{/if}
+
+	<!-- Session Statistics Panel - Desktop -->
+				{#if showSessionStats && shotTimerSession.reps.length > 0}
+		<div class="hidden md:block fixed top-0 h-full w-96 bg-card border-l border-border z-50 shadow-2xl overflow-y-auto" style="right: {(showZoneSettings ? 384 : 0) + (showShotTimer ? 384 : 0) + (showVisualizationControls ? 384 : 0)}px">
+			<div class="p-6">
+				<div class="flex items-center justify-between mb-6">
+					<h3 class="text-xl font-semibold">Draw Timer Session</h3>
+					<button
+						onclick={() => showSessionStats = false}
+						class="bg-secondary hover:bg-secondary/80 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+						aria-label="Close session stats"
+					>
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+						
+						<!-- Session Stats -->
+				<div class="grid grid-cols-2 gap-4 mb-6">
+					<div class="bg-secondary rounded-lg p-4 text-center">
+						<div class="text-sm text-muted-foreground mb-1">Reps Completed</div>
+								<div class="text-2xl font-bold font-mono">{shotTimerSession.reps.length}</div>
+							</div>
+					<div class="bg-secondary rounded-lg p-4 text-center">
+						<div class="text-sm text-muted-foreground mb-1">Average Time</div>
+								<div class="text-2xl font-bold font-mono">{formatTime(calculateAverage())}s</div>
+							</div>
+					<div class="bg-secondary rounded-lg p-4 text-center">
+						<div class="text-sm text-muted-foreground mb-1">Best Time</div>
+						<div class="text-2xl font-bold font-mono text-success">{formatTime(calculateBest())}s</div>
+							</div>
+					<div class="bg-secondary rounded-lg p-4 text-center">
+						<div class="text-sm text-muted-foreground mb-1">Worst Time</div>
+						<div class="text-2xl font-bold font-mono text-destructive">{formatTime(calculateWorst())}s</div>
+							</div>
+						</div>
+						
+						<!-- Accuracy Breakdown -->
+						{#if calculateAccuracyByZone().length > 0}
+							<div class="mb-6">
+								<h4 class="text-lg font-semibold mb-3">Accuracy</h4>
+								<div class="space-y-2">
+									{#each calculateAccuracyByZone() as zone}
+								<div class="flex justify-between items-center py-2 border-b border-border">
+											<span style="color: {zone.color}; font-weight: 600;">{zone.name}</span>
+									<span class="text-foreground">
+												{zone.count}/{shotTimerSession.reps.length} ({zone.percentage}%)
+											</span>
+										</div>
+									{/each}
+								</div>
+							</div>
+						{/if}
+						
+						<!-- Individual Reps List -->
+						<div class="mb-6">
+							<h4 class="text-lg font-semibold mb-3">Individual Reps</h4>
+							<div class="overflow-x-auto">
+								<table class="w-full text-sm">
+									<thead>
+								<tr class="border-b border-border">
+									<th class="text-left py-2 text-muted-foreground">#</th>
+									<th class="text-left py-2 text-muted-foreground">Time</th>
+									<th class="text-left py-2 text-muted-foreground">Zone</th>
+									<th class="text-left py-2 text-muted-foreground">Points</th>
+										</tr>
+									</thead>
+									<tbody>
+										{#each shotTimerSession.reps as rep, index}
+									<tr class="border-b border-border">
+										<td class="py-2">{index + 1}</td>
+										<td class="py-2 font-mono">{formatTime(rep.drawTime)}s</td>
+												<td class="py-2" style="color: {rep.hit.zoneColor}; font-weight: 600;">{rep.hit.zone}</td>
+										<td class="py-2">{rep.hit.points !== null ? `+${rep.hit.points}` : '-'}</td>
+											</tr>
+										{/each}
+									</tbody>
+								</table>
+							</div>
+						</div>
+						
+						<!-- Session Actions -->
+						<div class="flex gap-3">
+							<button
+								onclick={() => {
+									showSessionStats = false;
+									shotTimerCooldownUntil = null;
+									startDrill();
+								}}
+						class="flex-1 bg-primary hover:bg-primary/90 px-6 py-3 rounded-lg font-semibold transition-colors"
+							>
+								Continue Session
+							</button>
+							<button
+								onclick={() => {
+									shotTimerSession = { reps: [], startedAt: null };
+									showSessionStats = false;
+									shotTimerPhase = 'idle';
+								}}
+						class="flex-1 bg-secondary hover:bg-secondary/80 px-6 py-3 rounded-lg font-semibold transition-colors"
+							>
+								End Session
+							</button>
+				</div>
+						</div>
+					</div>
+				{/if}
+
+	<!-- Shot Sequence Visualization Panel - Desktop (side panel) -->
+	{#if showVisualizationControls}
+		<div class="hidden md:block fixed top-0 h-full w-96 bg-card border-l border-border z-50 shadow-2xl overflow-y-auto" style="right: {(showZoneSettings ? 384 : 0) + (showShotTimer ? 384 : 0)}px">
+			<div class="p-6">
+				<div class="flex items-center justify-between mb-6">
+					<h3 class="text-xl font-semibold">Shot Sequence Visualization</h3>
+					<button
+						onclick={() => showVisualizationControls = false}
+						class="bg-secondary hover:bg-secondary/80 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+						aria-label="Close sequence controls"
+					>
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+						</div>
+				
+				<div class="space-y-4">
+					<!-- Toggle Controls -->
+					<div class="flex items-center gap-3">
+						<input
+							id="show-shot-numbers-desktop"
+							type="checkbox"
+							checked={visualizationState.showShotNumbers}
+							onchange={(e) => {
+								visualizationState.showShotNumbers = e.target.checked;
+								visualizationState = { ...visualizationState };
+							}}
+							class="w-5 h-5"
+						/>
+						<label for="show-shot-numbers-desktop" class="cursor-pointer">
+							Show Shot Numbers
+						</label>
+						</div>
+					
+					<div class="flex items-center gap-3">
+						<input
+							id="show-sequence-lines-desktop"
+							type="checkbox"
+							checked={visualizationState.showSequenceLines}
+							onchange={(e) => {
+								visualizationState.showSequenceLines = e.target.checked;
+								visualizationState = { ...visualizationState };
+							}}
+							class="w-5 h-5"
+						/>
+						<label for="show-sequence-lines-desktop" class="cursor-pointer">
+							Show Sequence Lines
+						</label>
+						</div>
+					
+					<!-- Line Color Picker -->
+					<div class="flex items-center gap-3">
+						<label for="line-color-desktop" class="text-sm">Line Color:</label>
+						<input
+							id="line-color-desktop"
+							type="color"
+							value={visualizationState.lineColor}
+							oninput={(e) => {
+								visualizationState.lineColor = e.target.value;
+								visualizationState = { ...visualizationState };
+							}}
+							class="w-16 h-8 border border-border rounded cursor-pointer"
+						/>
+				</div>
+
+					<!-- Replay Mode Controls -->
+				{#if hits.length > 0}
+						<div class="pt-4 border-t border-border">
+							<label for="replay-slider-desktop" class="block mb-2">
+								Replay Mode:
+							</label>
+							<input
+								id="replay-slider-desktop"
+								type="range"
+								min="0"
+								max={hits.length}
+								value={visualizationState.currentReplayShot}
+								oninput={(e) => {
+									const val = parseInt(e.target.value);
+									visualizationState.currentReplayShot = val;
+									visualizationState.showAllShots = val === 0;
+									visualizationState = { ...visualizationState };
+								}}
+								class="w-full"
+							/>
+							<div class="text-center text-sm text-muted-foreground mt-1">
+								{visualizationState.currentReplayShot === 0 
+									? 'All Shots' 
+									: `Shot ${visualizationState.currentReplayShot} of ${hits.length}`}
+									</div>
+								</div>
+							{/if}
+					
+					<!-- Shot Group Analysis -->
+					{#if hits.length >= 2}
+						{@const grouping = calculateShotGrouping(hits)}
+						{#if grouping}
+							<div class="pt-4 border-t border-border">
+								<h4 class="text-md font-semibold mb-3">Shot Group Analysis</h4>
+								<div class="space-y-2">
+									<div class="flex justify-between text-sm">
+										<span class="text-muted-foreground">Group Size (avg):</span>
+										<span class="font-semibold">{grouping.groupSize}</span>
+									</div>
+									<div class="flex justify-between text-sm">
+										<span class="text-muted-foreground">Max Spread:</span>
+										<span class="font-semibold">{grouping.maxSpread}px</span>
+									</div>
+									<div class="flex justify-between text-sm">
+										<span class="text-muted-foreground">Total Shots:</span>
+										<span class="font-semibold">{hits.length}</span>
+									</div>
+									</div>
+								</div>
+							{/if}
+				{/if}
+
+					<!-- Export Button -->
+					{#if hits.length > 0}
+						<button
+							onclick={exportShotPattern}
+							class="w-full bg-secondary hover:bg-secondary/80 px-4 py-2 rounded-lg font-semibold text-sm transition-colors"
+						>
+							📸 Export Shot Pattern
+						</button>
+												{/if}
+									</div>
+								</div>
+						</div>
+					{/if}
 
 <style>
 	/* Mobile-specific styles */
