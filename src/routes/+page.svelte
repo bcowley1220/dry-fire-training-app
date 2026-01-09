@@ -1,9 +1,11 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import { browser } from '$app/environment';
 
 	// State
 	let videoElement;
 	let canvasElement;
+	let canvasWrapper = null; // Reference to canvas wrapper for touch events
 	let videoStream = null;
 	let isStreaming = $state(false);
 	let hits = $state([]);
@@ -270,6 +272,7 @@
 	let showVisualizationControls = $state(false);
 	let showDiagnosticOverlay = $state(false);
 	let showDebugOverlay = $state(false); // Debug mode to show detection pixels
+	let isFullscreen = $state(false);
 
 	// Initialize camera
 	async function startCamera() {
@@ -1390,8 +1393,10 @@
 		const zoomFactor = newZoom / cameraZoom;
 		
 		// Adjust pan to zoom towards the center point
-		cameraPanX = centerX - (centerX - cameraPanX) * zoomFactor;
-		cameraPanY = centerY - (centerY - cameraPanY) * zoomFactor;
+		// Formula: newPan = oldPan - center * oldZoom * (zoomFactor - 1)
+		// This keeps the center point visually in the same place
+		cameraPanX = cameraPanX - centerX * cameraZoom * (zoomFactor - 1);
+		cameraPanY = cameraPanY - centerY * cameraZoom * (zoomFactor - 1);
 		
 		cameraZoom = newZoom;
 	}
@@ -1441,9 +1446,10 @@
 		const centerY = ((touch1.clientY + touch2.clientY) / 2) - wrapperRect.top;
 		
 		// Adjust pan based on zoom and center point
+		// Formula: newPan = oldPan - center * oldZoom * (zoomFactor - 1)
 		const zoomDelta = newZoom / zoomStartZoom;
-		cameraPanX = centerX - (centerX - zoomStartPanX) * zoomDelta;
-		cameraPanY = centerY - (centerY - zoomStartPanY) * zoomDelta;
+		cameraPanX = zoomStartPanX - centerX * zoomStartZoom * (zoomDelta - 1);
+		cameraPanY = zoomStartPanY - centerY * zoomStartZoom * (zoomDelta - 1);
 		
 		cameraZoom = newZoom;
 		lastTouchCenterX = centerX;
@@ -1452,6 +1458,23 @@
 
 	function handlePinchEnd(event) {
 		isZooming = false;
+	}
+
+	// Wrapper functions for touch events (needed for passive: false)
+	function handleTouchStart(event) {
+		if (event.touches.length === 2) {
+			handlePinchStart(event);
+		} else if (event.touches.length === 1 && cameraZoom > 1.0) {
+			handlePan(event);
+		}
+	}
+
+	function handleTouchMove(event) {
+		if (event.touches.length === 2) {
+			handlePinchMove(event);
+		} else if (event.touches.length === 1 && cameraZoom > 1.0) {
+			handlePan(event);
+		}
 	}
 
 	function handlePan(event) {
@@ -1481,6 +1504,46 @@
 				lastTouchCenterX = touch.clientX - wrapperRect.left;
 				lastTouchCenterY = touch.clientY - wrapperRect.top;
 			}
+		}
+	}
+
+	async function toggleFullscreen() {
+		if (!browser) return;
+		
+		const cameraViewport = document.querySelector('.camera-viewport-container');
+		if (!cameraViewport) return;
+		
+		try {
+			if (!document.fullscreenElement) {
+				// Enter fullscreen
+				await cameraViewport.requestFullscreen();
+				isFullscreen = true;
+			} else {
+				// Exit fullscreen
+				await document.exitFullscreen();
+				isFullscreen = false;
+			}
+		} catch (error) {
+			console.error('Error toggling fullscreen:', error);
+			// Fallback: try on document element
+			try {
+				if (!document.fullscreenElement) {
+					await document.documentElement.requestFullscreen();
+					isFullscreen = true;
+				} else {
+					await document.exitFullscreen();
+					isFullscreen = false;
+				}
+			} catch (fallbackError) {
+				console.error('Fallback fullscreen failed:', fallbackError);
+			}
+		}
+	}
+
+	// Listen for fullscreen changes (user might exit via ESC key)
+	function handleFullscreenChange() {
+		if (browser) {
+			isFullscreen = !!document.fullscreenElement;
 		}
 	}
 
@@ -1869,7 +1932,7 @@
 	}
 
 	function exportShotPattern() {
-		if (!canvasElement || !videoElement) return;
+		if (!browser || !canvasElement || !videoElement) return;
 		
 		// Create a clean canvas with just the target and shots
 		const exportCanvas = document.createElement('canvas');
@@ -1959,12 +2022,43 @@
 		});
 	}
 
+	// Add touch event listeners when canvasWrapper is available
+	$effect(() => {
+		if (browser && canvasWrapper) {
+			canvasWrapper.addEventListener('touchstart', handleTouchStart, { passive: false });
+			canvasWrapper.addEventListener('touchmove', handleTouchMove, { passive: false });
+			canvasWrapper.addEventListener('touchend', handlePinchEnd, { passive: false });
+			
+			return () => {
+				canvasWrapper.removeEventListener('touchstart', handleTouchStart);
+				canvasWrapper.removeEventListener('touchmove', handleTouchMove);
+				canvasWrapper.removeEventListener('touchend', handlePinchEnd);
+			};
+		}
+	});
+
 	onMount(() => {
 		// Don't auto-start camera - let user start it manually
+		
+		// Listen for fullscreen changes (only in browser)
+		if (browser) {
+			document.addEventListener('fullscreenchange', handleFullscreenChange);
+			document.addEventListener('webkitfullscreenchange', handleFullscreenChange); // Safari
+			document.addEventListener('mozfullscreenchange', handleFullscreenChange); // Firefox
+			document.addEventListener('MSFullscreenChange', handleFullscreenChange); // IE/Edge
+		}
 	});
 
 	onDestroy(() => {
 		stopCamera();
+		
+		// Remove fullscreen listeners (only in browser)
+		if (browser) {
+			document.removeEventListener('fullscreenchange', handleFullscreenChange);
+			document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+			document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+			document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+		}
 	});
 </script>
 
@@ -2189,7 +2283,7 @@
 			<!-- Active Training Mode -->
 			<div class="space-y-4 animate-fade-in">
 				<!-- Camera Viewport -->
-				<div class="relative w-full bg-card rounded-xl overflow-hidden border border-border aspect-[4/3]">
+				<div class="camera-viewport-container relative w-full bg-card rounded-xl overflow-hidden border border-border aspect-[4/3]">
 					<!-- Camera Feed -->
 		<div class="relative bg-black rounded-lg overflow-hidden shadow-lg h-full w-full">
 			<video
@@ -2200,24 +2294,10 @@
 				class="w-full h-full object-contain hidden"
 			></video>
 			<div 
+				bind:this={canvasWrapper}
 				class="canvas-wrapper"
-				style="transform: scale({cameraZoom}) translate({cameraPanX}px, {cameraPanY}px); transform-origin: 0 0; width: 100%; height: 100%; overflow: hidden;"
+				style="transform: scale({cameraZoom}) translate({cameraPanX / cameraZoom}px, {cameraPanY / cameraZoom}px); transform-origin: 0 0; width: 100%; height: 100%; overflow: hidden;"
 				onwheel={handleZoom}
-				ontouchstart={(e) => {
-					if (e.touches.length === 2) {
-						handlePinchStart(e);
-					} else if (e.touches.length === 1 && cameraZoom > 1.0) {
-						handlePan(e);
-					}
-				}}
-				ontouchmove={(e) => {
-					if (e.touches.length === 2) {
-						handlePinchMove(e);
-					} else if (e.touches.length === 1 && cameraZoom > 1.0) {
-						handlePan(e);
-					}
-				}}
-				ontouchend={handlePinchEnd}
 			>
 				<canvas
 					bind:this={canvasElement}
@@ -2325,10 +2405,22 @@
 		{/if}
 		
 				<!-- Fullscreen Button -->
-				<button class="absolute top-3 right-3 glass border-0 hover:bg-secondary/50 p-2 rounded-lg transition-colors">
-					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-					</svg>
+				<button 
+					onclick={toggleFullscreen}
+					class="absolute top-3 right-3 glass border-0 hover:bg-secondary/50 p-2 rounded-lg transition-colors z-20"
+					aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+				>
+					{#if isFullscreen}
+						<!-- Exit fullscreen icon -->
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12M4 8h4m0 0v4m0-4l5 5m7-5h-4m0 0v4m0-4l-5 5M4 16h4m0 0v4m0-4l5-5m7 5h-4m0 0v4m0-4l-5-5" />
+						</svg>
+					{:else}
+						<!-- Enter fullscreen icon -->
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+						</svg>
+					{/if}
 			</button>
 	
 				<!-- Bottom Controls -->
