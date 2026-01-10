@@ -2319,9 +2319,9 @@
 					tabindex="0"
 					style="touch-action: none;"
 				></div>
-				<div
-					class="absolute top-4 left-1/2 transform -translate-x-1/2 bg-yellow-500 text-black px-4 py-2 rounded font-semibold text-center max-w-[90%]"
-				>
+			<div
+				class="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-yellow-500/50 backdrop-blur-sm text-black px-4 py-2 rounded font-semibold text-center w-[75%]"
+			>
 					{#if calibrationPoints.length === 0}
 						Tap corners CLOCKWISE: Start with top-left corner
 					{:else if calibrationPoints.length === 1}
@@ -2347,10 +2347,10 @@
 					tabindex="0"
 					style="touch-action: none;"
 				></div>
-				<div
-					class="absolute top-4 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded font-semibold text-center max-w-[90%]"
-					style="background-color: {zones[zoneCalibrationMode].color}; color: #000;"
-				>
+			<div
+				class="absolute bottom-4 left-1/2 transform -translate-x-1/2 backdrop-blur-sm px-4 py-2 rounded font-semibold text-center w-[75%]"
+				style="background-color: {zones[zoneCalibrationMode].color}80; color: #000;"
+			>
 					{#if zoneCalibrationPoints.length === 0}
 						Define {zoneCalibrationMode}-zone: Tap corners CLOCKWISE (start top-left)
 					{:else if zoneCalibrationPoints.length === 1}
@@ -2423,30 +2423,34 @@
 					{/if}
 			</button>
 	
-				<!-- Bottom Controls -->
-				<div class="absolute bottom-3 left-3 right-3 flex justify-center gap-2 z-10">
-			<button 
-						onclick={stopCamera}
-						class="glass border-0 backdrop-blur-xl shadow-lg px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-1.5 bg-destructive/20 hover:bg-destructive/30 text-destructive"
-					>
+			<!-- Stop Button - Top Left -->
+			<div class="absolute top-3 left-3 z-10">
+		<button 
+					onclick={stopCamera}
+					class="glass border-0 backdrop-blur-xl shadow-lg px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-1.5 bg-destructive/20 hover:bg-destructive/30 text-destructive"
+				>
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10h6v4H9z" />
+					</svg>
+					Stop
+		</button>
+			</div>
+			
+			<!-- Bottom Controls -->
+			<div class="absolute bottom-3 left-3 right-3 flex justify-center gap-2 z-10">
+				{#if !calibrationMode}
+		<button 
+			onclick={startCalibration}
+						class="glass border-0 backdrop-blur-xl shadow-lg px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-1.5 bg-primary/20 hover:bg-primary/30 text-primary"
+		>
 						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10h6v4H9z" />
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
 						</svg>
-						Stop
-			</button>
-					{#if !calibrationMode}
-			<button 
-				onclick={startCalibration}
-							class="glass border-0 backdrop-blur-xl shadow-lg px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-1.5 bg-primary/20 hover:bg-primary/30 text-primary"
-			>
-							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-							</svg>
-							Calibrate
-			</button>
-		{/if}
-	</div>
+						Calibrate
+		</button>
+	{/if}
+</div>
 			{/if}
 		</div>
 	</div>
