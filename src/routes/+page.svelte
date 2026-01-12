@@ -56,7 +56,7 @@
 	};
 
 	// Target mode and configuration
-	let targetMode = $state('preloaded'); // 'preloaded' | 'custom' | 'freeform'
+	let targetMode = $state('custom'); // 'preloaded' | 'custom' | 'freeform'
 	let selectedTemplate = $state('ipsc-classic');
 	let showTargetModeSelection = $state(false);
 	let isSetupComplete = $state(false); // Track if setup is complete
@@ -2103,7 +2103,7 @@
 					
 					<div class="space-y-2">
 						<!-- Pre-loaded Template -->
-						<button
+						<!-- <button
 							onclick={() => targetMode = 'preloaded'}
 							class="w-full flex items-center gap-3 p-3 rounded-lg border transition-all duration-200 {targetMode === 'preloaded' ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-secondary/50 hover:bg-secondary text-foreground'}"
 						>
@@ -2121,7 +2121,7 @@
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
 								</svg>
 							{/if}
-						</button>
+						</button> -->
 
 						<!-- Custom Target -->
 						<button
@@ -3032,7 +3032,7 @@
 						{/if}
 						
 						<div class="flex gap-3">
-							{#if !shotTimerConfig.autoNextRound || currentRound >= shotTimerConfig.roundCount}
+							{#if !shotTimerConfig.autoNextRound || currentRound >= hotTimerConfig.roundCount}
 								<button
 									onclick={nextRep}
 												class="flex-1 bg-primary hover:bg-primary/90 px-6 py-3 rounded-lg font-semibold transition-colors"
