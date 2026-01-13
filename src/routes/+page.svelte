@@ -3,7 +3,7 @@
 	import { browser } from '$app/environment';
 	import { detectLaserDots, CLUSTER_RADIUS } from '$lib/utils/detection.js';
 	import { DEFAULT_ZONES, templates } from '../lib/utils/zones.js';
-	import ShotTimerPanel from '$lib/components/ShotTimerPanel.svelte';
+	import DrillsPanel from '$lib/components/DrillsPanel.svelte';
 	import ZoneSettingsPanel from '$lib/components/ZoneSettingsPanel.svelte';
 	import VisualizationPanel from '$lib/components/VisualizationPanel.svelte';
 	import ActionBar from '$lib/components/ActionBar.svelte';
@@ -14,10 +14,10 @@
 	import StatusPills from '../lib/components/StatusPills.svelte';
 
 	// State
-	let videoElement;
-	let canvasElement;
 	let canvasWrapper = null; // Reference to canvas wrapper for touch events
-	let videoStream = null;
+	let videoElement = $state(null);
+	let canvasElement = $state(null);
+	let videoStream = $state(null);
 	let isStreaming = $state(false);
 	let hits = $state([]);
 	let calibrationMode = $state(false);
@@ -53,6 +53,7 @@
 	let shotTimerStartTime = $state(null);
 	let shotTimerFirstHitTime = $state(null);
 	let shotTimerConfig = $state({
+		drillType: 'draw',
 		mode: 'draw',
 		randomDelayMin: 2000, // ms
 		randomDelayMax: 5000, // ms
@@ -69,13 +70,14 @@
 	let shotTimerDelayTimeout = null;
 	let shotTimerAutoNextTimeout = null; // Timeout for automatic next round
 	let audioContext = null;
-	let showShotTimer = $state(false);
+	let showDrills = $state(false);
 	let showSessionStats = $state(false);
 	let timerDisplayUpdate = $state(0); // Force reactivity for timer display
 	let shotTimerCooldownUntil = $state(null); // Cooldown period after timer stops
 	let currentRound = $state(0); // Current round number (1-indexed)
 	let autoNextCountdown = $state(null); // Countdown remaining for auto-advance (ms)
 	let lastCalibrationClickTime = 0; // Debounce calibration clicks
+	let tempDrillData = $state({}); // Intermediate drill data for multi-stage drills
 	const CALIBRATION_CLICK_DEBOUNCE_MS = 300; // Prevent double-firing
 
 	// Shot Sequence Visualization State
@@ -235,11 +237,6 @@
 				// Check if shot timer is active
 				if (shotTimerActive) {
 					const consumed = handleTimerHit(newHit);
-					// If timer consumed the hit (first shot), don't add to regular hit log
-					if (consumed && shotTimerPhase === 'complete') {
-						lastHitTime = now;
-						continue; // Skip normal hit logging
-					}
 				}
 				
 				hits = [...hits, newHit];
@@ -1145,6 +1142,7 @@
 		shotTimerFirstHitTime = null;
 		shotTimerCooldownUntil = null; // Reset cooldown on cancel
 		autoNextCountdown = null; // Reset countdown on cancel
+		tempDrillData = {}; // Reset temp data
 		console.log('Drill cancelled');
 	}
 
@@ -1155,7 +1153,15 @@
 			alert('False start! Wait for the beep before shooting.');
 			return false; // Don't count this hit
 		}
-		
+
+		if (shotTimerConfig.drillType === 'reload') {
+			return handleReloadDrillHit(hit);
+		} else {
+			return handleDrawDrillHit(hit);
+		}
+	}
+
+	function handleDrawDrillHit(hit) {
 		// Check if this is the first hit
 		if (shotTimerPhase === 'active' && shotTimerFirstHitTime === null) {
 			// Record hit time
@@ -1166,6 +1172,7 @@
 			const repResult = {
 				id: `rep_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
 				timestamp: Date.now(),
+				drillType: 'draw',
 				drawTime: shotTimerFirstHitTime,
 				hit: {
 					x: hit.x,
@@ -1187,40 +1194,103 @@
 			// Timer is no longer active (drill complete)
 			shotTimerActive = false;
 			
-			// Check if we should auto-advance to next round
-			if (shotTimerConfig.autoNextRound && currentRound < shotTimerConfig.roundCount) {
-				// Set up countdown
-				const countdownStart = performance.now();
-				autoNextCountdown = shotTimerConfig.resetDuration;
-				
-				// Update countdown every 100ms
-				const countdownInterval = setInterval(() => {
-					const elapsed = performance.now() - countdownStart;
-					const remaining = Math.max(0, shotTimerConfig.resetDuration - elapsed);
-					autoNextCountdown = remaining;
-					
-					if (remaining <= 0) {
-						clearInterval(countdownInterval);
-						autoNextCountdown = null;
-					}
-				}, 100);
-				
-				// Schedule automatic next round after reset duration
-				shotTimerAutoNextTimeout = setTimeout(() => {
-					clearInterval(countdownInterval);
-					autoNextCountdown = null;
-					nextRep();
-				}, shotTimerConfig.resetDuration);
-			} else {
-				autoNextCountdown = null;
-			}
-			
-			// Open drawer to show results
+			handleAutoNext();
 			
 			return true; // Hit was consumed by timer
 		}
 		
 		return false; // Hit not consumed
+	}
+
+	function handleReloadDrillHit(hit) {
+		if (shotTimerPhase === 'active') {
+			// First shot (Draw)
+			const now = performance.now();
+			shotTimerFirstHitTime = now - shotTimerStartTime;
+
+			tempDrillData = {
+				shot1: {
+					time: shotTimerFirstHitTime,
+					hit: { ...hit }
+				}
+			};
+
+			shotTimerPhase = 'reloading';
+			console.log(`Shot 1: ${(shotTimerFirstHitTime / 1000).toFixed(3)}s. RELOAD!`);
+			return true;
+		} else if (shotTimerPhase === 'reloading') {
+			// Second shot (Reload + Fire)
+			const now = performance.now();
+			const totalTime = now - shotTimerStartTime;
+
+			shotTimerPhase = 'complete';
+
+			const repResult = {
+				id: `rep_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+				timestamp: Date.now(),
+				drillType: 'reload',
+				drawTime: tempDrillData.shot1.time, // First shot time
+				reloadTime: totalTime - tempDrillData.shot1.time, // Split time
+				totalTime: totalTime, // Total time
+				hits: [
+					tempDrillData.shot1.hit,
+					{
+						x: hit.x,
+						y: hit.y,
+						zone: hit.zone,
+						points: hit.points,
+						zoneColor: hit.zoneColor
+					}
+				],
+				// For backward compatibility with stats panel (which uses hit and drawTime)
+				hit: hit, // Last hit
+				falseStart: false
+			};
+
+			shotTimerSession.reps = [...shotTimerSession.reps, repResult];
+
+			console.log(`Reload Drill Complete. Total: ${(totalTime / 1000).toFixed(3)}s`);
+
+			shotTimerCooldownUntil = performance.now() + 1000;
+			shotTimerActive = false;
+			tempDrillData = {};
+
+			handleAutoNext();
+
+			return true;
+		}
+
+		return false;
+	}
+
+	function handleAutoNext() {
+		// Check if we should auto-advance to next round
+		if (shotTimerConfig.autoNextRound && currentRound < shotTimerConfig.roundCount) {
+			// Set up countdown
+			const countdownStart = performance.now();
+			autoNextCountdown = shotTimerConfig.resetDuration;
+
+			// Update countdown every 100ms
+			const countdownInterval = setInterval(() => {
+				const elapsed = performance.now() - countdownStart;
+				const remaining = Math.max(0, shotTimerConfig.resetDuration - elapsed);
+				autoNextCountdown = remaining;
+
+				if (remaining <= 0) {
+					clearInterval(countdownInterval);
+					autoNextCountdown = null;
+				}
+			}, 100);
+
+			// Schedule automatic next round after reset duration
+			shotTimerAutoNextTimeout = setTimeout(() => {
+				clearInterval(countdownInterval);
+				autoNextCountdown = null;
+				nextRep();
+			}, shotTimerConfig.resetDuration);
+		} else {
+			autoNextCountdown = null;
+		}
 	}
 
 	function nextRep() {
@@ -1443,6 +1513,7 @@
 				<CameraStage
 					bind:videoElement
 					bind:canvasElement
+					stream={videoStream}
 					{isStreaming}
 					{isSetupComplete}
 					{calibrationMode}
@@ -1476,7 +1547,7 @@
 			{targetBoundary}
 			{hits}
 			bind:showZoneSettings
-			bind:showShotTimer
+			bind:showDrills
 			bind:showVisualizationControls
 			bind:showDiagnosticOverlay
 			bind:showDebugOverlay
@@ -1521,10 +1592,10 @@
 	{/if}
 							
 	<!-- Shot Timer Panel - Desktop (side panel) -->
-	{#if showShotTimer}
+	{#if showDrills}
 		<div class="hidden md:block fixed top-0 h-full w-96 bg-card border-l border-border z-50 shadow-2xl overflow-y-auto" style="right: {showZoneSettings ? '384px' : '0'}">
 			<div class="p-6 h-full">
-				<ShotTimerPanel
+				<DrillsPanel
 					mobile={false}
 					active={shotTimerActive}
 					phase={shotTimerPhase}
@@ -1541,7 +1612,7 @@
 						shotTimerSession = { reps: [], startedAt: null };
 						shotTimerPhase = 'idle';
 					}}
-					on:close={() => (showShotTimer = false)}
+					on:close={() => (showDrills = false)}
 				/>
 			</div>
 		</div>
@@ -1549,7 +1620,7 @@
 
 	<!-- Shot Sequence Visualization Panel - Desktop (side panel) -->
 	{#if showVisualizationControls}
-		<div class="hidden md:block fixed top-0 h-full w-96 bg-card border-l border-border z-50 shadow-2xl overflow-y-auto" style="right: {(showZoneSettings ? 384 : 0) + (showShotTimer ? 384 : 0)}px">
+		<div class="hidden md:block fixed top-0 h-full w-96 bg-card border-l border-border z-50 shadow-2xl overflow-y-auto" style="right: {(showZoneSettings ? 384 : 0) + (showDrills ? 384 : 0)}px">
 			<div class="p-6 h-full">
 				<VisualizationPanel
 					mobile={false}

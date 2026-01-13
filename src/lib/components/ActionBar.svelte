@@ -1,7 +1,7 @@
 <script>
 	import { createEventDispatcher } from 'svelte';
 	import ZoneSettingsPanel from './ZoneSettingsPanel.svelte';
-	import ShotTimerPanel from './ShotTimerPanel.svelte';
+	import DrillsPanel from './DrillsPanel.svelte';
 	import VisualizationPanel from './VisualizationPanel.svelte';
 
 	// Props for button states
@@ -12,7 +12,7 @@
 
 	// Props for panel visibility (bindable)
 	export let showZoneSettings = false;
-	export let showShotTimer = false;
+	export let showDrills = false;
 	export let showVisualizationControls = false;
 	export let showDiagnosticOverlay = false;
 	export let showDebugOverlay = false;
@@ -39,7 +39,7 @@
 	<div
 		class="glass border-t border-border transition-all duration-300 ease-out {actionBarExpanded ||
 		showZoneSettings ||
-		showShotTimer ||
+		showDrills ||
 		showVisualizationControls
 			? 'pb-4'
 			: 'pb-0'}"
@@ -92,7 +92,7 @@
 				<span class="text-xs font-medium">Zones</span>
 			</button>
 			<button
-				on:click={() => (showShotTimer = !showShotTimer)}
+				on:click={() => (showDrills = !showDrills)}
 				class="flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all duration-200 active:scale-95 bg-warning/20 hover:bg-warning/30 text-warning border-warning/30"
 			>
 				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -103,7 +103,7 @@
 						d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
 					/>
 				</svg>
-				<span class="text-xs font-medium">Timer</span>
+				<span class="text-xs font-medium">Drills</span>
 			</button>
 			<button
 				on:click={() => dispatch('clearHits')}
@@ -228,9 +228,9 @@
 				</div>
 			{/if}
 
-			{#if showShotTimer}
+			{#if showDrills}
 				<div class="px-4 pt-3 border-t border-border/50 animate-fade-in max-h-[50vh] overflow-y-auto">
-					<ShotTimerPanel
+					<DrillsPanel
 						mobile={true}
 						active={shotTimerActive}
 						phase={shotTimerPhase}
@@ -244,7 +244,7 @@
 						on:cancel={() => dispatch('cancelDrill')}
 						on:next={() => dispatch('nextRep')}
 						on:end={() => dispatch('endSession')}
-						on:close={() => (showShotTimer = false)}
+						on:close={() => (showDrills = false)}
 					/>
 				</div>
 			{/if}

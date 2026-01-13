@@ -3,26 +3,26 @@
 	import { browser } from '$app/environment';
 	import { createEventDispatcher } from 'svelte';
 
-	// Element bindings for parent
-	export let videoElement = null;
-	export let canvasElement = null;
-
-	// State props from parent
-	export let isStreaming = false;
-	export let isSetupComplete = false;
-	export let calibrationMode = false;
-	export let calibrationPoints = [];
-	export let zoneCalibrationMode = null;
-	export let zoneCalibrationPoints = [];
-	export let zones = {};
-	export let targetBoundary = null;
-	export let isFullscreen = false;
+	let {
+		videoElement = $bindable(null),
+		canvasElement = $bindable(null),
+		stream = null,
+		isStreaming = false,
+		isSetupComplete = false,
+		calibrationMode = false,
+		calibrationPoints = [],
+		zoneCalibrationMode = null,
+		zoneCalibrationPoints = [],
+		zones = {},
+		targetBoundary = null,
+		isFullscreen = $bindable(false)
+	} = $props();
 
 	// Internal state for zoom/pan
-	let canvasWrapper = null;
-	let cameraZoom = 1.0;
-	let cameraPanX = 0;
-	let cameraPanY = 0;
+	let canvasWrapper = $state(null);
+	let cameraZoom = $state(1.0);
+	let cameraPanX = $state(0);
+	let cameraPanY = $state(0);
 	let isZooming = false;
 	let zoomStartDistance = 0;
 	let zoomStartZoom = 1.0;
@@ -185,6 +185,13 @@
 			handlePan(event);
 		}
 	}
+
+	$effect(() => {
+		if (videoElement && stream && videoElement.srcObject !== stream) {
+			videoElement.srcObject = stream;
+			videoElement.play().catch((e) => console.error('Error playing video:', e));
+		}
+	});
 
 	onMount(() => {
 		if (browser && canvasWrapper) {
