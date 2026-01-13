@@ -2,6 +2,8 @@
 
 A web-based dry-fire training application that uses your device's camera to detect laser training rounds and track your shooting performance. Perfect for practicing draw speed, accuracy, and shot placement without live ammunition.
 
+This is just a demo version to do proof of concept testing.
+
 ## Features
 
 ### 🎯 Camera-Based Laser Detection
