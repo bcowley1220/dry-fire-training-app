@@ -14,7 +14,9 @@
 		beepFrequency: 1000,
 		autoNextRound: false,
 		roundCount: 10,
-		resetDuration: 3000
+		resetDuration: 3000,
+		malfunctionMode: false,
+		malfunctionProbability: 0.1
 	};
 	export let session = { reps: [], startedAt: null };
 	export let currentRound = 0;
@@ -187,6 +189,12 @@
 								{#if rep.drillType === 'reload'}
 									<span class="text-xs text-muted-foreground">({formatTime(rep.drawTime)} / {formatTime(rep.reloadTime)})</span>
 								{/if}
+								{#if rep.drillType === 'callout'}
+									<span class="text-xs text-muted-foreground">({rep.calledTarget})</span>
+								{/if}
+								{#if rep.isMalfunction}
+									<span class="text-[10px] bg-destructive/20 text-destructive px-1.5 py-0.5 rounded border border-destructive/30 font-bold tracking-wider">MALF</span>
+								{/if}
 							</div>
 							<div class="flex items-center gap-2">
 								{#if rep.drillType === 'reload' && rep.hits}
@@ -195,7 +203,9 @@
 									{/each}
 								{:else}
 									<span style="color: {rep.hit.zoneColor}; font-weight: 600;">{rep.hit.zone}</span>
-									{#if rep.hit.points !== null}
+									{#if rep.isFailure}
+										<span class="text-destructive font-bold">{rep.drillType === 'callout' ? 'WRONG TGT' : 'FAIL'}</span>
+									{:else if rep.hit.points !== null}
 										<span class="text-muted-foreground">+{rep.hit.points}</span>
 									{/if}
 								{/if}
@@ -235,6 +245,7 @@
 				>
 					<option value="draw">Draw Speed</option>
 					<option value="reload">Magazine Reload</option>
+					<option value="callout">Call-Out (Multi-Target)</option>
 				</select>
 			</div>
 
@@ -322,6 +333,16 @@
 						</div>
 					</div>
 				{/if}
+			</div>
+
+			<div class="border-t border-border pt-4 mt-4">
+				<div class="flex items-center gap-3 mb-2">
+					<input type="checkbox" id="malfunction-mode-{mobile ? 'mobile' : 'desktop'}" bind:checked={config.malfunctionMode} class="w-5 h-5" />
+					<label for="malfunction-mode-{mobile ? 'mobile' : 'desktop'}" class="text-sm font-semibold"> Random Malfunctions (Striker Mode) </label>
+				</div>
+				<p class="text-xs text-muted-foreground ml-8 mb-4">
+					Randomly simulates a dead trigger (10% chance). You must rack the slide and fire again to stop the timer.
+				</p>
 			</div>
 
 			<button
@@ -433,6 +454,19 @@
 							</div>
 						{/each}
 					</div>
+				{:else if lastRep.drillType === 'callout'}
+					<div class="text-sm text-muted-foreground mb-2">Called: <span class="font-bold text-foreground">{lastRep.calledTarget}</span></div>
+					<div class="text-4xl font-bold font-mono {lastRep.isFailure ? 'text-destructive' : 'text-success'} mb-4">
+						{formatTime(lastRep.drawTime)}s
+					</div>
+					<div class="flex items-center justify-center gap-4 text-lg">
+						<span style="color: {lastRep.hit.zoneColor}; font-weight: 600;">
+							{lastRep.hit.zone}
+						</span>
+						{#if lastRep.isFailure}
+							<span class="text-destructive font-bold">WRONG TARGET</span>
+						{/if}
+					</div>
 				{:else}
 					<div class="text-sm text-muted-foreground mb-2">Draw Time:</div>
 					<div class="text-4xl font-bold font-mono text-success mb-4">
@@ -459,11 +493,10 @@
 			{/if}
 
 			<div class="flex gap-3">
-				{#if !config.autoNextRound || currentRound >= config.roundCount}
+				{#if !config.autoNextRound || currentRound < config.roundCount}
 					<button
 						on:click={next}
 						class="flex-1 bg-primary hover:bg-primary/90 px-6 py-3 rounded-lg font-semibold transition-colors"
-						disabled={config.autoNextRound && currentRound >= config.roundCount}
 					>
 						Next Rep
 					</button>

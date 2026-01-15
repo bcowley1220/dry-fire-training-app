@@ -14,7 +14,10 @@
 		zoneCalibrationMode = null,
 		zoneCalibrationPoints = [],
 		zones = {},
-		targetBoundary = null,
+		targets = [],
+		hasBackground = false,
+		waitingForClear = false,
+		callOutTarget = null,
 		isFullscreen = $bindable(false)
 	} = $props();
 
@@ -30,10 +33,39 @@
 	let zoomStartPanY = 0;
 	let lastTouchCenterX = 0;
 	let lastTouchCenterY = 0;
+/*  */	let isDragging = false;
+	let lastMouseX = 0;
+	let lastMouseY = 0;
+
+	// Zoom capabilities state
+	let hasHardwareZoom = $state(false);
+	let zoomCapabilities = $state({ min: 1, max: 5, step: 0.1 });
+	let currentZoomLevel = $state(1);
+	let showZoomControls = $state(false);
 
 	const dispatch = createEventDispatcher();
 
 	// --- Event Handlers ---
+
+	function constrainPan() {
+		if (!canvasWrapper) return;
+		const rect = canvasWrapper.getBoundingClientRect();
+		const width = rect.width;
+		const height = rect.height;
+
+		const minPanX = width - width * cameraZoom;
+		const maxPanX = 0;
+		const minPanY = height - height * cameraZoom;
+		const maxPanY = 0;
+
+		if (cameraZoom <= 1) {
+			cameraPanX = 0;
+			cameraPanY = 0;
+		} else {
+			cameraPanX = Math.min(maxPanX, Math.max(minPanX, cameraPanX));
+			cameraPanY = Math.min(maxPanY, Math.max(minPanY, cameraPanY));
+		}
+	}
 
 	function handleCanvasClick(event) {
 		if (!canvasElement) return;
@@ -100,6 +132,7 @@
 		cameraPanX = cameraPanX - centerX * cameraZoom * (zoomFactor - 1);
 		cameraPanY = cameraPanY - centerY * cameraZoom * (zoomFactor - 1);
 		cameraZoom = newZoom;
+		constrainPan();
 	}
 
 	function handlePinchStart(event) {
@@ -140,6 +173,7 @@
 		cameraZoom = newZoom;
 		lastTouchCenterX = centerX;
 		lastTouchCenterY = centerY;
+		constrainPan();
 	}
 
 	function handlePinchEnd() {
@@ -167,6 +201,7 @@
 				lastTouchCenterX = touch.clientX - wrapperRect.left;
 				lastTouchCenterY = touch.clientY - wrapperRect.top;
 			}
+			constrainPan();
 		}
 	}
 
@@ -186,10 +221,61 @@
 		}
 	}
 
+	function handleMouseDown(event) {
+		if (cameraZoom <= 1.0) return;
+		isDragging = true;
+		lastMouseX = event.clientX;
+		lastMouseY = event.clientY;
+	}
+
+	function handleMouseMove(event) {
+		if (!isDragging) return;
+		event.preventDefault();
+		const deltaX = event.clientX - lastMouseX;
+		const deltaY = event.clientY - lastMouseY;
+
+		cameraPanX += deltaX;
+		cameraPanY += deltaY;
+
+		lastMouseX = event.clientX;
+		lastMouseY = event.clientY;
+
+		constrainPan();
+	}
+
+	function handleMouseUp() {
+		isDragging = false;
+	}
+
+	function handleMouseLeave() {
+		isDragging = false;
+	}
+
 	$effect(() => {
 		if (videoElement && stream && videoElement.srcObject !== stream) {
 			videoElement.srcObject = stream;
 			videoElement.play().catch((e) => console.error('Error playing video:', e));
+
+			// Check for hardware zoom capabilities
+			const track = stream.getVideoTracks()[0];
+			const capabilities = track?.getCapabilities?.() ?? {};
+			const settings = track?.getSettings?.() ?? {};
+
+			if (capabilities.zoom) {
+				hasHardwareZoom = true;
+				zoomCapabilities = {
+					min: capabilities.zoom.min,
+					max: capabilities.zoom.max,
+					step: capabilities.zoom.step
+				};
+				currentZoomLevel = settings.zoom || capabilities.zoom.min;
+				// Reset software zoom if hardware is active
+				cameraZoom = 1.0;
+			} else {
+				hasHardwareZoom = false;
+				zoomCapabilities = { min: 1, max: 5, step: 0.1 };
+				currentZoomLevel = cameraZoom;
+			}
 		}
 	});
 
@@ -205,6 +291,39 @@
 			};
 		}
 	});
+
+	function handleSliderZoom(e) {
+		const value = parseFloat(e.currentTarget.value);
+		currentZoomLevel = value;
+
+		if (hasHardwareZoom && stream) {
+			const track = stream.getVideoTracks()[0];
+			if (track) {
+				track.applyConstraints({ advanced: [{ zoom: value }] }).catch((err) => {
+					console.error('Failed to apply zoom constraints:', err);
+				});
+			}
+		} else {
+			// Software zoom with center focus
+			const oldZoom = cameraZoom;
+			const newZoom = value;
+
+			if (canvasWrapper) {
+				const rect = canvasWrapper.getBoundingClientRect();
+				const width = rect.width;
+				const height = rect.height;
+
+				// Calculate center point in unzoomed space relative to current pan
+				const cx = width / 2;
+				const cy = height / 2;
+
+				cameraPanX = cx - ((cx - cameraPanX) / oldZoom) * newZoom;
+				cameraPanY = cy - ((cy - cameraPanY) / oldZoom) * newZoom;
+			}
+			cameraZoom = newZoom;
+			constrainPan();
+		}
+	}
 </script>
 
 <div
@@ -224,6 +343,10 @@
 			class="canvas-wrapper"
 			style="transform: scale({cameraZoom}) translate({cameraPanX / cameraZoom}px, {cameraPanY /
 				cameraZoom}px); transform-origin: 0 0; width: 100%; height: 100%; overflow: hidden;"
+			on:mousedown={handleMouseDown}
+			on:mousemove={handleMouseMove}
+			on:mouseup={handleMouseUp}
+			on:mouseleave={handleMouseLeave}
 			on:wheel={handleZoom}
 		>
 			<canvas
@@ -327,41 +450,74 @@
 		<!-- Camera Overlay Controls (when streaming) -->
 		{#if isStreaming && isSetupComplete}
 			<!-- Calibrated Badge -->
-			{#if targetBoundary}
+			{#if targets.length > 0}
 				<div
 					class="absolute top-3 left-3 glass px-3 py-1.5 rounded-full flex items-center gap-2 text-xs border border-success/20"
 				>
 					<div class="w-2 h-2 rounded-full bg-success pulse-active"></div>
-					<span class="text-success font-medium">Calibrated</span>
+					<span class="text-success font-medium">{targets.length} Target{targets.length > 1 ? 's' : ''}</span>
 				</div>
 			{/if}
 
-			<!-- Fullscreen Button -->
-			<button
-				on:click={() => dispatch('toggleFullscreen')}
-				class="absolute top-3 right-3 glass border-0 hover:bg-secondary/50 p-2 rounded-lg transition-colors z-20"
-				aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-			>
-				{#if isFullscreen}
-					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M6 18L18 6M6 6l12 12M4 8h4m0 0v4m0-4l5 5m7-5h-4m0 0v4m0-4l-5 5M4 16h4m0 0v4m0-4l5-5m7 5h-4m0 0v4m0-4l-5-5"
-						/>
+			<!-- Malfunction Overlay -->
+			{#if waitingForClear}
+				<div class="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
+					<div class="bg-red-600/90 text-white px-8 py-6 rounded-xl text-4xl font-black animate-pulse border-4 border-white shadow-2xl transform -rotate-6 backdrop-blur-sm">
+						MALFUNCTION!
+					</div>
+				</div>
+			{/if}
+
+			<!-- Call-Out Overlay -->
+			{#if callOutTarget}
+				<div class="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
+					<div class="bg-blue-600/90 text-white px-8 py-6 rounded-xl text-4xl font-black animate-pulse border-4 border-white shadow-2xl transform rotate-0 backdrop-blur-sm text-center">
+						{callOutTarget}
+					</div>
+				</div>
+			{/if}
+
+			<!-- Top Right Controls -->
+			<div class="absolute top-3 right-3 z-20 flex gap-2">
+				<!-- Background Button -->
+				<button
+					on:click={() => dispatch('toggleBackground')}
+					class="glass border-0 hover:bg-secondary/50 p-2 rounded-lg transition-colors {hasBackground ? 'text-green-400 bg-green-400/10' : ''}"
+					aria-label="Set Background"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+						<path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
 					</svg>
-				{:else}
-					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
-						/>
-					</svg>
-				{/if}
-			</button>
+				</button>
+
+				<!-- Fullscreen Button -->
+				<button
+					on:click={() => dispatch('toggleFullscreen')}
+					class="glass border-0 hover:bg-secondary/50 p-2 rounded-lg transition-colors"
+					aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+				>
+					{#if isFullscreen}
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M6 18L18 6M6 6l12 12M4 8h4m0 0v4m0-4l5 5m7-5h-4m0 0v4m0-4l-5 5M4 16h4m0 0v4m0-4l5-5m7 5h-4m0 0v4m0-4l-5-5"
+							/>
+						</svg>
+					{:else}
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
+							/>
+						</svg>
+					{/if}
+				</button>
+			</div>
 
 			<!-- Stop Button - Top Left -->
 			<div class="absolute top-3 left-3 z-10">
@@ -379,6 +535,50 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10h6v4H9z" />
 					</svg>
 					Stop
+				</button>
+			</div>
+
+			<!-- Zoom Slider -->
+			<div class="absolute bottom-20 right-4 z-20 flex flex-col items-end gap-2">
+				{#if showZoomControls}
+					<div class="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-2 rounded-full border border-white/10 shadow-lg animate-fade-in">
+						{#if currentZoomLevel > 1}
+							<button
+								class="text-xs font-medium text-white/80 hover:text-white px-1"
+								on:click={() => {
+									if (hasHardwareZoom && stream) {
+										const track = stream.getVideoTracks()[0];
+										if (track) track.applyConstraints({ advanced: [{ zoom: 1 }] });
+										currentZoomLevel = 1;
+									} else {
+										cameraZoom = 1;
+										cameraPanX = 0;
+										cameraPanY = 0;
+										currentZoomLevel = 1;
+									}
+								}}>Reset</button>
+							<div class="w-px h-4 bg-white/20 mx-1"></div>
+						{/if}
+						<span class="text-xs font-medium text-white/80 w-8 text-right">{(currentZoomLevel).toFixed(1)}x</span>
+						<input
+							type="range"
+							min={zoomCapabilities.min}
+							max={zoomCapabilities.max}
+							step={zoomCapabilities.step}
+							value={currentZoomLevel}
+							on:input={handleSliderZoom}
+							class="w-24 h-1.5 bg-white/20 rounded-lg appearance-none cursor-pointer accent-primary"
+						/>
+					</div>
+				{/if}
+				<button
+					on:click={() => showZoomControls = !showZoomControls}
+					class="glass border-0 bg-black/60 backdrop-blur-md p-3 rounded-full shadow-lg hover:bg-black/80 transition-all {showZoomControls ? 'text-primary' : 'text-white'}"
+					aria-label="Toggle Zoom Controls"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+					</svg>
 				</button>
 			</div>
 		{/if}
