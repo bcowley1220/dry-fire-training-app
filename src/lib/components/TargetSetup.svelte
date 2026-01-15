@@ -242,6 +242,7 @@
 	{/if}
 
 	<button
+		id="btn-start-camera"
 		on:click={() => dispatch('complete')}
 		class="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg font-semibold transition-colors"
 	>
