@@ -22,8 +22,11 @@
 	let hits = $state([]);
 	let calibrationMode = $state(false);
 	let calibrationPoints = $state([]);
-	let targetBoundary = $state(null);
+	let targets = $state([]); // Array of { id, name, boundary }
+	let targetBoundary = $derived(targets.length > 0 ? targets[targets.length - 1].boundary : null); // Backward compatibility
 	let detectionActive = $state(false);
+	let backgroundSnapshot = $state(null);
+	const backgroundThreshold = 100; // Sensitivity for change detection. Higher is less sensitive.
 	let animationFrameId = null;
 	let lastHitTime = $state(0);
 	let hitDebounceMs = 100; // Ignore hits within 100ms of previous hit
@@ -61,7 +64,9 @@
 		beepFrequency: 1000, // Hz
 		autoNextRound: false, // Enable automatic next round
 		roundCount: 10, // Number of rounds to shoot
-		resetDuration: 3000 // ms between rounds
+		resetDuration: 3000, // ms between rounds
+		malfunctionMode: false,
+		malfunctionProbability: 0.1
 	});
 	let shotTimerSession = $state({
 		reps: [],
@@ -77,7 +82,9 @@
 	let currentRound = $state(0); // Current round number (1-indexed)
 	let autoNextCountdown = $state(null); // Countdown remaining for auto-advance (ms)
 	let lastCalibrationClickTime = 0; // Debounce calibration clicks
+	let waitingForClear = $state(false); // Malfunction state
 	let tempDrillData = $state({}); // Intermediate drill data for multi-stage drills
+	let consecutiveMalfunctions = 0; // Track consecutive malfunctions to prevent bad luck streaks
 	const CALIBRATION_CLICK_DEBOUNCE_MS = 300; // Prevent double-firing
 
 	// Shot Sequence Visualization State
@@ -116,7 +123,7 @@
 				startDetection();
 				
 				// Auto-start calibration if setup is complete and calibration is needed (unless freeform mode)
-				if (isSetupComplete && !targetBoundary && targetMode !== 'freeform') {
+				if (isSetupComplete && targets.length === 0 && targetMode !== 'freeform') {
 					startCalibration();
 				}
 			}
@@ -178,14 +185,43 @@
 		const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 		const pixels = imageData.data;
 
+		// Reset snapshot if video dimensions change
+		if (
+			backgroundSnapshot &&
+			(backgroundSnapshot.width !== canvas.width || backgroundSnapshot.height !== canvas.height)
+		) {
+			console.warn('Video dimensions changed. Clearing background snapshot.');
+			backgroundSnapshot = null;
+		}
+
 		// Clear debug pixels for this frame
 		if (showDebugOverlay) {
 			window.debugPixels = [];
 		}
 
-		// Detect laser dots
-		const detectedHits = detectLaserDots(pixels, canvas.width, canvas.height, showDebugOverlay);
+		// Calculate ROI (Region of Interest) if target is calibrated
+		// We calculate the union of all target bounding boxes
+		let roi = null;
+		if (targets.length > 0) {
+			let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+			targets.forEach(t => {
+				const bbox = getTargetBoundingBox(t.boundary);
+				minX = Math.min(minX, bbox.minX);
+				maxX = Math.max(maxX, bbox.maxX);
+				minY = Math.min(minY, bbox.minY);
+				maxY = Math.max(maxY, bbox.maxY);
+			});
+			
+			roi = {
+				minX: Math.max(0, Math.floor(minX)),
+				maxX: Math.min(canvas.width, Math.ceil(maxX)),
+				minY: Math.max(0, Math.floor(minY)),
+				maxY: Math.min(canvas.height, Math.ceil(maxY))
+			};
+		}
 
+		// Detect laser dots
+		const detectedHits = detectLaserDots(pixels, canvas.width, canvas.height, showDebugOverlay, backgroundSnapshot, backgroundThreshold, roi);
 		// Process detected hits
 		for (const hit of detectedHits) {
 			// Check if we're in shot timer cooldown period
@@ -194,16 +230,16 @@
 			}
 
 			// Detect zone for this hit
-			const zoneInfo = detectZone(hit.x, hit.y, targetBoundary);
+			const zoneInfo = detectZone(hit.x, hit.y);
 
 			// Freeform mode: log all hits (zoneInfo.zone will be 'Hit', not 'Miss')
 			// For other modes: skip hits outside calibrated boundary
-			if (targetBoundary && zoneInfo.zone === 'Miss' && targetMode !== 'freeform') {
+			if (targets.length > 0 && zoneInfo.zone === 'Miss' && targetMode !== 'freeform') {
 				continue;
 			}
 			
 			// For zone-based modes without calibration, skip (can't detect zones)
-			if (!targetBoundary && targetMode !== 'freeform' && zoneInfo.zone === 'Miss') {
+			if (targets.length === 0 && targetMode !== 'freeform' && zoneInfo.zone === 'Miss') {
 				continue;
 			}
 
@@ -230,6 +266,7 @@
 					zone: zoneInfo.zone,
 					points: zoneInfo.points,
 					zoneColor: zoneInfo.color || '#3b82f6',
+					targetId: zoneInfo.targetId,
 					shotNumber: sessionShotCounter,
 					displayUntil: now + 2000 // Show marker for 2 seconds
 				};
@@ -442,14 +479,22 @@
 		// Draw debug overlay if enabled (shows detected pixels)
 		if (showDebugOverlay) {
 			drawDebugOverlay(ctx, width, height);
+
+			// Draw ROI bounding box in debug mode
+			if (targets.length > 0) {
+				// We can re-calculate ROI here or pass it from processFrames if we refactor, 
+				// but for debug drawing, let's just draw individual target boxes
+				ctx.strokeStyle = 'cyan';
+				ctx.lineWidth = 1;
+				targets.forEach(t => {
+					const bbox = getTargetBoundingBox(t.boundary);
+					ctx.strokeRect(bbox.minX, bbox.minY, bbox.maxX - bbox.minX, bbox.maxY - bbox.minY);
+				});
+			}
 		}
 
 		// Draw target boundary and zones if calibrated
-		if (targetBoundary) {
-			const bbox = getTargetBoundingBox(targetBoundary);
-			const targetWidth = bbox.maxX - bbox.minX;
-			const targetHeight = bbox.maxY - bbox.minY;
-
+		if (targets.length > 0) {
 			// Helper function to convert hex to rgba with opacity
 			function hexToRgba(hex, opacity) {
 				const r = parseInt(hex.slice(1, 3), 16);
@@ -458,74 +503,75 @@
 				return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 			}
 
-			// Draw grid overlay if grid mode
-			if (targetMode === 'preloaded' && templates[selectedTemplate]?.grid) {
-				drawGridOverlay(ctx, targetBoundary, templates[selectedTemplate].grid);
-			}
-			// Draw template zones if pre-loaded template
-			else if (targetMode === 'preloaded' && templates[selectedTemplate]?.zones) {
-				const template = templates[selectedTemplate];
-				// Draw zones from outermost to innermost
-				for (let i = template.zones.length - 1; i >= 0; i--) {
-					const zone = template.zones[i];
-					const rect = {
-						x: bbox.minX + targetWidth * zone.normalized.minX,
-						y: bbox.minY + targetHeight * zone.normalized.minY,
-						width: targetWidth * (zone.normalized.maxX - zone.normalized.minX),
-						height: targetHeight * (zone.normalized.maxY - zone.normalized.minY)
-					};
-					
-					ctx.fillStyle = hexToRgba(zone.color, 0.2);
-					ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
-					
-					// Draw zone label
-					ctx.fillStyle = zone.color;
-					ctx.font = 'bold 24px sans-serif';
-					ctx.fillText(zone.name, rect.x + 10, rect.y + 30);
+			// Iterate through all targets
+			targets.forEach((target, index) => {
+				const bbox = getTargetBoundingBox(target.boundary);
+				const targetWidth = bbox.maxX - bbox.minX;
+				const targetHeight = bbox.maxY - bbox.minY;
+
+				// Draw grid overlay if grid mode (only for first target for now or if template applied)
+				if (targetMode === 'preloaded' && templates[selectedTemplate]?.grid) {
+					drawGridOverlay(ctx, target.boundary, templates[selectedTemplate].grid);
 				}
-			}
-			// Draw custom zones
-			else if (targetMode === 'custom') {
-				// Draw zones from outermost to innermost (D → C → A)
-				for (const zoneName of ['D', 'C', 'A']) {
-					const zone = zones[zoneName];
-					if (!zone) continue;
-					
-					if (customZoneBounds[zoneName]) {
-						// Draw custom polygon zone
+				// Draw template zones if pre-loaded template
+				else if (targetMode === 'preloaded' && templates[selectedTemplate]?.zones) {
+					const template = templates[selectedTemplate];
+					// Draw zones from outermost to innermost
+					for (let i = template.zones.length - 1; i >= 0; i--) {
+						const zone = template.zones[i];
+						const rect = {
+							x: bbox.minX + targetWidth * zone.normalized.minX,
+							y: bbox.minY + targetHeight * zone.normalized.minY,
+							width: targetWidth * (zone.normalized.maxX - zone.normalized.minX),
+							height: targetHeight * (zone.normalized.maxY - zone.normalized.minY)
+						};
+						
 						ctx.fillStyle = hexToRgba(zone.color, 0.2);
-						ctx.beginPath();
-						ctx.moveTo(customZoneBounds[zoneName].x1, customZoneBounds[zoneName].y1);
-						ctx.lineTo(customZoneBounds[zoneName].x2, customZoneBounds[zoneName].y2);
-						ctx.lineTo(customZoneBounds[zoneName].x3, customZoneBounds[zoneName].y3);
-						ctx.lineTo(customZoneBounds[zoneName].x4, customZoneBounds[zoneName].y4);
-						ctx.closePath();
-						ctx.fill();
-					} else {
-						// Draw normalized rectangle zone
-						ctx.fillStyle = hexToRgba(zone.color, 0.2);
-						ctx.fillRect(
-							bbox.minX + targetWidth * zone.bounds.x[0],
-							bbox.minY + targetHeight * zone.bounds.y[0],
-							targetWidth * (zone.bounds.x[1] - zone.bounds.x[0]),
-							targetHeight * (zone.bounds.y[1] - zone.bounds.y[0])
-						);
+						ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+						
+						// Draw zone label
+						ctx.fillStyle = zone.color;
+						ctx.font = 'bold 24px sans-serif';
+						ctx.fillText(zone.name, rect.x + 10, rect.y + 30);
 					}
 				}
-			}
+				// Draw custom zones
+				else if (targetMode === 'custom') {
+					// Draw zones from outermost to innermost (D → C → A)
+					for (const zoneName of ['D', 'C', 'A']) {
+						const zone = zones[zoneName];
+						if (!zone) continue;
+						
+						const rect = {
+							x: bbox.minX + targetWidth * zone.bounds.x[0],
+							y: bbox.minY + targetHeight * zone.bounds.y[0],
+							width: targetWidth * (zone.bounds.x[1] - zone.bounds.x[0]),
+							height: targetHeight * (zone.bounds.y[1] - zone.bounds.y[0])
+						};
+						
+						ctx.fillStyle = hexToRgba(zone.color, 0.2);
+						ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+					}
 
-			// Draw target boundary outline
-			ctx.strokeStyle = '#00ff00';
-			ctx.lineWidth = 2;
-			ctx.setLineDash([5, 5]);
-			ctx.beginPath();
-			ctx.moveTo(targetBoundary.x1, targetBoundary.y1);
-			ctx.lineTo(targetBoundary.x2, targetBoundary.y2);
-			ctx.lineTo(targetBoundary.x3, targetBoundary.y3);
-			ctx.lineTo(targetBoundary.x4, targetBoundary.y4);
-			ctx.closePath();
-			ctx.stroke();
-			ctx.setLineDash([]);
+					// Label
+					ctx.fillStyle = '#ffffff';
+					ctx.font = 'bold 16px sans-serif';
+					ctx.fillText(target.name, bbox.minX + 5, bbox.minY + 20);
+				}
+
+				// Draw target boundary outline
+				ctx.strokeStyle = '#00ff00';
+				ctx.lineWidth = 2;
+				ctx.setLineDash([5, 5]);
+				ctx.beginPath();
+				ctx.moveTo(target.boundary.x1, target.boundary.y1);
+				ctx.lineTo(target.boundary.x2, target.boundary.y2);
+				ctx.lineTo(target.boundary.x3, target.boundary.y3);
+				ctx.lineTo(target.boundary.x4, target.boundary.y4);
+				ctx.closePath();
+				ctx.stroke();
+				ctx.setLineDash([]);
+			});
 		}
 
 		// Determine which hits to display (for replay mode)
@@ -662,7 +708,7 @@
 		return { x: normalizedX, y: normalizedY };
 	}
 
-	function detectZone(x, y, boundary) {
+	function detectZone(x, y) {
 		// Freeform mode: no zone detection, just return hit info
 		if (targetMode === 'freeform') {
 			return { zone: 'Hit', points: null, color: '#3b82f6' };
@@ -670,55 +716,60 @@
 
 		// Grid mode: detect grid cell
 		if (targetMode === 'preloaded' && templates[selectedTemplate]?.grid) {
-			return getGridCellForHit(x, y, boundary);
-		}
-
-		if (!boundary) {
-			return { zone: 'Miss', points: 0, color: '#6b7280' };
-		}
-
-		// Check if hit is within target boundary
-		if (!isPointInBoundary(x, y, boundary)) {
-			return { zone: 'Miss', points: 0, color: '#6b7280' };
-		}
-
-		// Pre-loaded template mode: use template zones
-		if (targetMode === 'preloaded' && templates[selectedTemplate]?.zones) {
-			const template = templates[selectedTemplate];
-			const normalized = normalizeHitCoordinates(x, y, boundary);
-			
-			// Check zones from innermost to outermost
-			for (const zone of template.zones) {
-				if (
-					normalized.x >= zone.normalized.minX &&
-					normalized.x <= zone.normalized.maxX &&
-					normalized.y >= zone.normalized.minY &&
-					normalized.y <= zone.normalized.maxY
-				) {
-					return { zone: zone.name, points: zone.points, color: zone.color };
-				}
+			// For grid mode, we assume single target for now
+			if (targets.length > 0) {
+				return getGridCellForHit(x, y, targets[0].boundary);
 			}
+		}
+
+		if (targets.length === 0) {
 			return { zone: 'Miss', points: 0, color: '#6b7280' };
 		}
 
-		// Custom mode: check zones from innermost to outermost (A → C → D)
-		// If custom bounds exist, use point-in-polygon test, otherwise use normalized bounds
-		for (const zoneName of ['A', 'C', 'D']) {
-			if (customZoneBounds[zoneName]) {
-				// Use custom polygon bounds
-				if (isPointInBoundary(x, y, customZoneBounds[zoneName])) {
-					return { zone: zones[zoneName].name, points: zones[zoneName].points, color: zones[zoneName].color };
+		// Iterate through all targets
+		for (const target of targets) {
+			const boundary = target.boundary;
+			
+			// Check if hit is within this target
+			if (isPointInBoundary(x, y, boundary)) {
+				
+				// Pre-loaded template mode: use template zones
+				if (targetMode === 'preloaded' && templates[selectedTemplate]?.zones) {
+					const template = templates[selectedTemplate];
+					const normalized = normalizeHitCoordinates(x, y, boundary);
+					
+					// Check zones from innermost to outermost
+					for (const zone of template.zones) {
+						if (
+							normalized.x >= zone.normalized.minX &&
+							normalized.x <= zone.normalized.maxX &&
+							normalized.y >= zone.normalized.minY &&
+							normalized.y <= zone.normalized.maxY
+						) {
+							return { zone: zone.name, points: zone.points, color: zone.color, targetId: target.id };
+						}
+					}
+					// Hit the target but missed defined zones? Count as generic hit or miss?
+					// For now, let's say if it's in the boundary but not a zone, it's a "D" or similar, but sticking to template logic:
+					return { zone: 'Hit', points: 1, color: '#3b82f6', targetId: target.id };
 				}
-			} else {
-				// Use normalized bounds
-				const normalized = normalizeHitCoordinates(x, y, boundary);
-				if (
-					normalized.x >= zones[zoneName].bounds.x[0] &&
-					normalized.x <= zones[zoneName].bounds.x[1] &&
-					normalized.y >= zones[zoneName].bounds.y[0] &&
-					normalized.y <= zones[zoneName].bounds.y[1]
-				) {
-					return { zone: zones[zoneName].name, points: zones[zoneName].points, color: zones[zoneName].color };
+
+				// Custom mode: check zones from innermost to outermost (A → C → D)
+				// If custom bounds exist, use point-in-polygon test, otherwise use normalized bounds
+				if (targetMode === 'custom') {
+					const normalized = normalizeHitCoordinates(x, y, boundary);
+					
+					for (const zoneName of ['A', 'C', 'D']) {
+						const zone = zones[zoneName];
+						if (!zone) continue;
+						
+						if (normalized.x >= zone.bounds.x[0] && normalized.x <= zone.bounds.x[1] &&
+							normalized.y >= zone.bounds.y[0] && normalized.y <= zone.bounds.y[1]) {
+							return { zone: zone.name, points: zone.points, color: zone.color, targetId: target.id };
+						}
+					}
+					
+					return { zone: target.name, points: 0, color: '#3b82f6', targetId: target.id };
 				}
 			}
 		}
@@ -753,8 +804,11 @@
 		calibrationPoints = [...calibrationPoints, { x, y }];
 
 		if (calibrationPoints.length === 4) {
-			// Set target boundary
-			targetBoundary = {
+			// Create new target
+			const newTarget = {
+				id: crypto.randomUUID(),
+				name: `Target ${targets.length + 1}`,
+				boundary: {
 				x1: calibrationPoints[0].x,
 				y1: calibrationPoints[0].y,
 				x2: calibrationPoints[1].x,
@@ -762,8 +816,11 @@
 				x3: calibrationPoints[2].x,
 				y3: calibrationPoints[2].y,
 				x4: calibrationPoints[3].x,
-				y4: calibrationPoints[3].y
+					y4: calibrationPoints[3].y
+				}
 			};
+			
+			targets = [...targets, newTarget];
 			calibrationMode = false;
 			calibrationPoints = [];
 			
@@ -910,7 +967,7 @@
 	}
 
 	function clearCalibration() {
-		targetBoundary = null;
+		targets = [];
 		calibrationPoints = [];
 		calibrationMode = false;
 		customZoneBounds = { A: null, C: null, D: null };
@@ -1051,6 +1108,19 @@
 		customZoneBounds = { A: null, C: null, D: null };
 	}
 
+	function takeBackgroundSnapshot() {
+		if (!videoElement) return;
+		const tempCanvas = document.createElement('canvas');
+		const tempCtx = tempCanvas.getContext('2d');
+		const width = videoElement.videoWidth;
+		const height = videoElement.videoHeight;
+		tempCanvas.width = width;
+		tempCanvas.height = height;
+		tempCtx.drawImage(videoElement, 0, 0, width, height);
+		backgroundSnapshot = tempCtx.getImageData(0, 0, width, height);
+		console.log('Background snapshot taken.');
+	}
+
 	// Shot Timer Functions
 	function getAudioContext() {
 		if (!audioContext) {
@@ -1079,6 +1149,38 @@
 		}
 	}
 
+	function playClickSound() {
+		try {
+			const ctx = getAudioContext();
+			const oscillator = ctx.createOscillator();
+			const gainNode = ctx.createGain();
+
+			oscillator.connect(gainNode);
+			gainNode.connect(ctx.destination);
+
+			// Mechanical click sound (square wave, fast decay)
+			oscillator.type = 'square';
+			oscillator.frequency.setValueAtTime(800, ctx.currentTime); // Higher pitch start for better audibility
+			oscillator.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.05);
+
+			gainNode.gain.setValueAtTime(1.0, ctx.currentTime); // Max volume
+			gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+
+			oscillator.start(ctx.currentTime);
+			oscillator.stop(ctx.currentTime + 0.05);
+		} catch (error) {
+			console.error('Error playing click:', error);
+		}
+	}
+
+	function speak(text, callback) {
+		if (!browser || !window.speechSynthesis) return;
+		const utterance = new SpeechSynthesisUtterance(text);
+		utterance.rate = 1.1;
+		if (callback) utterance.onend = callback;
+		window.speechSynthesis.speak(utterance);
+	}
+
 	async function startDrill() {
 		
 		// If starting a new session (no reps or session was completed), reset round counter
@@ -1104,6 +1206,7 @@
 		shotTimerPhase = 'waiting';
 		shotTimerStartTime = null;
 		shotTimerFirstHitTime = null;
+		waitingForClear = false;
 		
 		// Calculate random delay
 		const delayRange = shotTimerConfig.randomDelayMax - shotTimerConfig.randomDelayMin;
@@ -1111,20 +1214,50 @@
 		
 		console.log(`Round ${currentRound}/${shotTimerConfig.roundCount} - Random delay: ${(delay / 1000).toFixed(2)}s`);
 		
-		// Wait for random delay
-		shotTimerDelayTimeout = setTimeout(() => {
-			// Check if drill was cancelled during delay
-			if (!shotTimerActive) return;
-			
-			// Play start beep
-			playStartBeep();
-			
-			// Mark start time
-			shotTimerStartTime = performance.now();
-			shotTimerPhase = 'active';
-			
-			console.log('Timer started - waiting for first hit');
-		}, delay);
+		if (shotTimerConfig.drillType === 'callout') {
+			if (targets.length < 1) {
+				alert("You need at least one target for Call-Out drills.");
+				cancelDrill();
+				return;
+			}
+
+			// Pick random target
+			const target = targets[Math.floor(Math.random() * targets.length)];
+			tempDrillData = { callOutTargetId: target.id, callOutTargetName: target.name };
+
+			// Sequence: Shooter Ready -> Standby -> [Target Name]
+			speak("Shooter Ready", () => {
+				if (!shotTimerActive) return;
+				setTimeout(() => {
+					if (!shotTimerActive) return;
+					speak("Standby", () => {
+						if (!shotTimerActive) return;
+						setTimeout(() => {
+							if (!shotTimerActive) return;
+							speak(target.name);
+							shotTimerStartTime = performance.now();
+							shotTimerPhase = 'active';
+							console.log(`Call-out started: ${target.name}`);
+						}, delay);
+					});
+				}, 1000);
+			});
+		} else {
+			// Wait for random delay
+			shotTimerDelayTimeout = setTimeout(() => {
+				// Check if drill was cancelled during delay
+				if (!shotTimerActive) return;
+				
+				// Play start beep
+				playStartBeep();
+				
+				// Mark start time
+				shotTimerStartTime = performance.now();
+				shotTimerPhase = 'active';
+				
+				console.log('Timer started - waiting for first hit');
+			}, delay);
+		}
 	}
 
 	function cancelDrill() {
@@ -1136,11 +1269,13 @@
 			clearTimeout(shotTimerAutoNextTimeout);
 			shotTimerAutoNextTimeout = null;
 		}
+		if (browser && window.speechSynthesis) window.speechSynthesis.cancel();
 		shotTimerActive = false;
 		shotTimerPhase = 'idle';
 		shotTimerStartTime = null;
 		shotTimerFirstHitTime = null;
 		shotTimerCooldownUntil = null; // Reset cooldown on cancel
+		waitingForClear = false;
 		autoNextCountdown = null; // Reset countdown on cancel
 		tempDrillData = {}; // Reset temp data
 		console.log('Drill cancelled');
@@ -1156,6 +1291,8 @@
 
 		if (shotTimerConfig.drillType === 'reload') {
 			return handleReloadDrillHit(hit);
+		} else if (shotTimerConfig.drillType === 'callout') {
+			return handleCallOutDrillHit(hit);
 		} else {
 			return handleDrawDrillHit(hit);
 		}
@@ -1164,6 +1301,24 @@
 	function handleDrawDrillHit(hit) {
 		// Check if this is the first hit
 		if (shotTimerPhase === 'active' && shotTimerFirstHitTime === null) {
+			// Malfunction Logic
+			if (shotTimerConfig.malfunctionMode && !waitingForClear) {
+				// Prevent more than 2 malfunctions in a row
+				const forceSafe = consecutiveMalfunctions >= 2;
+				
+				if (!forceSafe && Math.random() < shotTimerConfig.malfunctionProbability) {
+					playClickSound();
+					waitingForClear = true;
+					consecutiveMalfunctions++;
+					console.log('MALFUNCTION! CLEAR IT!');
+					return true; // Hit consumed, timer continues
+				}
+				consecutiveMalfunctions = 0;
+			}
+
+			const isMalfunctionClear = waitingForClear;
+			if (waitingForClear) waitingForClear = false;
+
 			// Record hit time
 			shotTimerFirstHitTime = performance.now() - shotTimerStartTime;
 			shotTimerPhase = 'complete';
@@ -1181,7 +1336,8 @@
 					points: hit.points,
 					zoneColor: hit.zoneColor
 				},
-				falseStart: false
+				falseStart: false,
+				isMalfunction: isMalfunctionClear
 			};
 			
 			shotTimerSession.reps = [...shotTimerSession.reps, repResult];
@@ -1204,6 +1360,24 @@
 
 	function handleReloadDrillHit(hit) {
 		if (shotTimerPhase === 'active') {
+			// Malfunction Logic (only on first shot)
+			if (shotTimerConfig.malfunctionMode && !waitingForClear) {
+				// Prevent more than 2 malfunctions in a row
+				const forceSafe = consecutiveMalfunctions >= 2;
+
+				if (!forceSafe && Math.random() < shotTimerConfig.malfunctionProbability) {
+					playClickSound();
+					waitingForClear = true;
+					consecutiveMalfunctions++;
+					console.log('MALFUNCTION! CLEAR IT!');
+					return true;
+				}
+				consecutiveMalfunctions = 0;
+			}
+
+			const isMalfunctionClear = waitingForClear;
+			if (waitingForClear) waitingForClear = false;
+
 			// First shot (Draw)
 			const now = performance.now();
 			shotTimerFirstHitTime = now - shotTimerStartTime;
@@ -1211,7 +1385,8 @@
 			tempDrillData = {
 				shot1: {
 					time: shotTimerFirstHitTime,
-					hit: { ...hit }
+					hit: { ...hit },
+					isMalfunction: isMalfunctionClear
 				}
 			};
 
@@ -1244,7 +1419,8 @@
 				],
 				// For backward compatibility with stats panel (which uses hit and drawTime)
 				hit: hit, // Last hit
-				falseStart: false
+				falseStart: false,
+				isMalfunction: tempDrillData.shot1.isMalfunction
 			};
 
 			shotTimerSession.reps = [...shotTimerSession.reps, repResult];
@@ -1260,6 +1436,47 @@
 			return true;
 		}
 
+		return false;
+	}
+
+	function handleCallOutDrillHit(hit) {
+		if (shotTimerPhase === 'active') {
+			// Record hit time
+			shotTimerFirstHitTime = performance.now() - shotTimerStartTime;
+			shotTimerPhase = 'complete';
+
+			const isWrongTarget = hit.targetId !== tempDrillData.callOutTargetId;
+			
+			// Store rep result
+			const repResult = {
+				id: `rep_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+				timestamp: Date.now(),
+				drillType: 'callout',
+				drawTime: shotTimerFirstHitTime,
+				calledTarget: tempDrillData.callOutTargetName,
+				hit: {
+					x: hit.x,
+					y: hit.y,
+					zone: hit.zone,
+					points: hit.points,
+					zoneColor: hit.zoneColor
+				},
+				falseStart: false,
+				isFailure: isWrongTarget,
+				isMalfunction: false
+			};
+			
+			shotTimerSession.reps = [...shotTimerSession.reps, repResult];
+			
+			console.log(`Call-out time: ${(repResult.drawTime / 1000).toFixed(3)}s, Target: ${hit.zone}, Result: ${isWrongTarget ? 'FAIL' : 'PASS'}`);
+			
+			shotTimerCooldownUntil = performance.now() + 1000;
+			shotTimerActive = false;
+			tempDrillData = {};
+			
+			handleAutoNext();
+			return true;
+		}
 		return false;
 	}
 
@@ -1309,6 +1526,7 @@
 			startedAt: Date.now()
 		};
 		currentRound = 0; // Reset round counter (will be incremented in startDrill)
+		consecutiveMalfunctions = 0; // Reset malfunction streak
 		shotTimerCooldownUntil = null; // Reset cooldown
 		if (shotTimerAutoNextTimeout) {
 			clearTimeout(shotTimerAutoNextTimeout);
@@ -1521,17 +1739,30 @@
 					{zoneCalibrationMode}
 					{zoneCalibrationPoints}
 					{zones}
-					{targetBoundary}
+					{targets}
+					{waitingForClear}
+					callOutTarget={shotTimerActive && shotTimerConfig.drillType === 'callout' && shotTimerPhase === 'active' ? tempDrillData.callOutTargetName : null}
+					hasBackground={!!backgroundSnapshot}
 					bind:isFullscreen
 					on:canvasClick={handleCanvasClick}
 					on:startCamera={startCamera}
 					on:stopCamera={stopCamera}
 					on:toggleFullscreen={toggleFullscreen}
 					on:cancelZoneCalibration={cancelZoneCalibration}
+					on:toggleBackground={() => {
+						if (backgroundSnapshot) {
+							backgroundSnapshot = null;
+							console.log('Background snapshot cleared.');
+						} else {
+							takeBackgroundSnapshot();
+						}
+					}}
 				/>
 	
 				<!-- Status Pills -->
-				<StatusPills {isStreaming} {hits} {targetBoundary} />
+				<div class="flex flex-wrap items-center justify-center gap-2">
+					<StatusPills {isStreaming} {hits} {targets} {backgroundSnapshot} />
+				</div>
 
 				<!-- Hits List -->
 				<HitsList {hits} />
@@ -1544,7 +1775,7 @@
 		<ActionBar
 			{calibrationMode}
 			{isStreaming}
-			{targetBoundary}
+			{targets}
 			{hits}
 			bind:showZoneSettings
 			bind:showDrills
@@ -1563,6 +1794,8 @@
 			timerDisplayUpdate={timerDisplayUpdate}
 			on:startCalibration={startCalibration}
 			on:clearCalibration={clearCalibration}
+			on:removeTarget={(e) => removeTarget(e.detail)}
+			on:renameTarget={(e) => renameTarget(e.detail.id, e.detail.name)}
 			on:resetSetup={() => (isSetupComplete = false)}
 			on:clearHits={clearHits}
 			on:resetZones={resetZonesToDefaults}

@@ -16,20 +16,36 @@ export const MIN_LASER_SIZE = 2; // Require at least 2 pixels to reduce noise
 export const MIN_COLOR_DOMINANCE = 30; // Minimum difference between dominant color and other channels
 export const MIN_BRIGHTNESS = 100; // Minimum total brightness (r+g+b) to avoid dim false positives
 
-export function detectLaserDots(pixels, width, height, debugMode = false) {
+export function detectLaserDots(pixels, width, height, debugMode = false, backgroundSnapshot = null, backgroundThreshold = 100, roi = null) {
 	const hits = [];
 	const visited = new Set();
 	const debugPixels = debugMode ? [] : null; // Store pixels that match criteria for debug overlay
 
+	const startX = roi ? roi.minX : 0;
+	const endX = roi ? roi.maxX : width;
+	const startY = roi ? roi.minY : 0;
+	const endY = roi ? roi.maxY : height;
+
 	// Scan for bright red or green pixels
-	for (let y = 0; y < height; y += 1) {
+	for (let y = startY; y < endY; y += 1) {
 		// Sample every pixel for better detection of small laser dots
-		for (let x = 0; x < width; x += 1) {
+		for (let x = startX; x < endX; x += 1) {
 			const idx = (y * width + x) * 4;
 			const r = pixels[idx];
 			const g = pixels[idx + 1];
 			const b = pixels[idx + 2];
 			const brightness = r + g + b;
+
+			// Background subtraction
+			if (backgroundSnapshot) {
+				const bgR = backgroundSnapshot.data[idx];
+				const bgG = backgroundSnapshot.data[idx + 1];
+				const bgB = backgroundSnapshot.data[idx + 2];
+				const diff = Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB);
+				if (diff < backgroundThreshold) {
+					continue;
+				}
+			}
 
 			// Skip dim pixels to avoid false positives
 			if (brightness < MIN_BRIGHTNESS) continue;

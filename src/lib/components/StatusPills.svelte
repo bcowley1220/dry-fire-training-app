@@ -1,7 +1,8 @@
 <script>
 	export let isStreaming = false;
 	export let hits = [];
-	export let targetBoundary = null;
+	export let targets = [];
+	export let backgroundSnapshot = null;
 </script>
 
 <div class="flex flex-wrap gap-2 justify-center">
@@ -16,10 +17,10 @@
 		<span class="text-muted-foreground/80 font-medium">Hits</span>
 		<span class="font-mono font-semibold">{hits.length}</span>
 	</div>
-	<div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs {targetBoundary ? 'bg-success/20 text-success border-success/30' : 'bg-warning/20 text-warning border-warning/30'}">
-		<span class="w-2 h-2 rounded-full {targetBoundary ? 'bg-success' : 'bg-warning'} shrink-0"></span>
+	<div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs {targets.length > 0 ? 'bg-success/20 text-success border-success/30' : 'bg-warning/20 text-warning border-warning/30'}">
+		<span class="w-2 h-2 rounded-full {targets.length > 0 ? 'bg-success' : 'bg-warning'} shrink-0"></span>
 		<span class="text-muted-foreground/80 font-medium">Calibrated</span>
-		<span class="font-mono font-semibold">{targetBoundary ? 'Yes' : 'No'}</span>
+		<span class="font-mono font-semibold">{targets.length > 0 ? targets.length : 'No'}</span>
 	</div>
 	<div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs {isStreaming ? 'bg-success/20 text-success border-success/30' : 'bg-secondary/50 text-foreground border-border'}">
 		{#if isStreaming}
@@ -28,4 +29,11 @@
 		<span class="text-muted-foreground/80 font-medium">Detection</span>
 		<span class="font-mono font-semibold">{isStreaming ? 'Active' : 'Off'}</span>
 	</div>
+	{#if backgroundSnapshot}
+		<div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs {isStreaming ? 'bg-success/20 text-success border-success/30' : 'bg-secondary/50 text-foreground border-border'}">
+			<span class="w-2 h-2 rounded-full {targets.length > 0 ? 'bg-success' : 'bg-warning'} shrink-0"></span>
+			<span class="text-muted-foreground/80 font-medium">Background</span>
+			<span class="font-mono font-semibold text-green-400">Set</span>
+		</div>
+	{/if}
 </div>
