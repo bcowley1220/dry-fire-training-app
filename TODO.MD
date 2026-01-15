@@ -35,6 +35,12 @@ Now that the app is reliable, solve the "I have to rack my slide" problem for st
 ### Phase 3: Capability Expansion (Multi-Target)
 This is the "bridge" feature. You can't do the cool games or advanced drills without this.
 
-- [ ] **Multi-Zone Detection:** Update the UI to allow "Add Target" so users can draw multiple polygons.
-- [ ] **The "Call-Out" Drill:** Once you have multiple zones, the app can call out "Target 1!" or "Blue!" and time how long it takes to hit that specific zone.
+- [x] **Multi-Zone Detection:** Update the UI to allow "Add Target" so users can draw multiple polygons.
+- [x] **The "Call-Out" Drill:** Once you have multiple zones, the app can call out "Target 1!" or "Blue!" and time how long it takes to hit that specific zone.
     - *Benefit:* This moves the app from "target practice" to "tactical decision making."
+
+### Phase 4: The "Product" Wrapper (MVP Polish)
+Turning a "tool" into a "product" that users can figure out on their own.
+
+- [x] **Onboarding Flow:** A guided tour (using something like `driver.js` or custom overlays) to teach the user: 1. Setup Camera, 2. Calibrate, 3. Set Background, 4. Start Drill.
+- [x] **Local Persistence:** Save user preferences (Beep volume, drill settings) and Session History to `localStorage` so they don't vanish on refresh.

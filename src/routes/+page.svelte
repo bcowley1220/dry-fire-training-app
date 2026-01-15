@@ -12,6 +12,8 @@
 	import CameraStage from '$lib/components/CameraStage.svelte';
 	import HitsList from '$lib/components/HitsList.svelte';
 	import StatusPills from '../lib/components/StatusPills.svelte';
+	import { driver } from 'driver.js';
+	import 'driver.js/dist/driver.css';
 
 	// State
 	let canvasWrapper = null; // Reference to canvas wrapper for touch events
@@ -103,6 +105,27 @@
 	let showDiagnosticOverlay = $state(false);
 	let showDebugOverlay = $state(false); // Debug mode to show detection pixels
 	let isFullscreen = $state(false);
+
+	// Onboarding State
+	let driverObj = null;
+	let tourSeen = $state(false);
+
+	const driverConfig = {
+		showProgress: true,
+		animate: true,
+		allowClose: true,
+		doneBtnText: 'Done',
+		closeBtnText: 'Skip',
+		nextBtnText: 'Next',
+		prevBtnText: 'Back',
+		onDestroyed: () => {
+			if (browser) {
+				localStorage.setItem('tour_seen', 'true');
+				tourSeen = true;
+			}
+			driverObj = null;
+		}
+	};
 
 	// Initialize camera
 	async function startCamera() {
@@ -1626,6 +1649,101 @@
 		});
 	}
 
+	function startOnboarding() {
+		driverObj = driver(driverConfig);
+
+		if (!isSetupComplete) {
+			// Phase 1: Setup
+			driverObj.setSteps([
+				{ 
+					element: '#setup-container', 
+					popover: { 
+						title: 'Welcome to Dry-Fire Trainer', 
+						description: 'Let\'s get your range set up. Select your target mode above, then click Continue to start the camera.',
+						showButtons: [] // Hide buttons to force interaction with the UI
+					} 
+				}
+			]);
+			driverObj.drive();
+		} else {
+			// Phase 2: Active (resumed after setup)
+			startActiveOnboarding();
+		}
+	}
+
+	function startActiveOnboarding() {
+		// Wait for DOM to update
+		setTimeout(() => {
+			if (!driverObj) driverObj = driver(driverConfig);
+			
+			driverObj.setSteps([
+				{
+					element: '#btn-calibrate',
+					popover: {
+						title: 'Calibrate Target',
+						description: 'Click here to define your target area. You will tap the 4 corners of your target.'
+					}
+				},
+				{
+					element: '#btn-set-background',
+					popover: {
+						title: 'Environmental Nulling',
+						description: 'If you have false positives from lights or reflections, use this to ignore the static background.'
+					}
+				},
+				{
+					element: '#btn-drills',
+					popover: {
+						title: 'Start Training',
+						description: 'Open the Drills panel to select a drill and start your session.'
+					}
+				}
+			]);
+			driverObj.drive();
+		}, 500);
+	}
+		function loadSettings() {
+		if (!browser) return;
+		
+		try {
+			const savedConfig = localStorage.getItem('shotTimerConfig');
+			if (savedConfig) shotTimerConfig = { ...shotTimerConfig, ...JSON.parse(savedConfig) };
+			
+			const savedVis = localStorage.getItem('visualizationState');
+			if (savedVis) visualizationState = { ...visualizationState, ...JSON.parse(savedVis) };
+			
+			const savedSession = localStorage.getItem('shotTimerSession');
+			if (savedSession) {
+				const session = JSON.parse(savedSession);
+				// Only restore if it has reps, otherwise start fresh
+				if (session.reps && session.reps.length > 0) {
+					shotTimerSession = session;
+					// Ensure timer is idle when restoring
+					shotTimerPhase = 'idle';
+					shotTimerActive = false;
+				}
+			}
+		} catch (e) {
+			console.error('Error loading settings:', e);
+		}
+	}
+
+	function resetApp() {
+		if (!browser) return;
+		if (confirm('Reset all settings and data? This will clear your current session and preferences.')) {
+			localStorage.clear();
+			location.reload();
+		}
+	}
+
+	$effect(() => {
+		if (browser) {
+			localStorage.setItem('shotTimerConfig', JSON.stringify(shotTimerConfig));
+			localStorage.setItem('visualizationState', JSON.stringify(visualizationState));
+			localStorage.setItem('shotTimerSession', JSON.stringify(shotTimerSession));
+		}
+	});
+
 	onMount(() => {
 		// Don't auto-start camera - let user start it manually
 		
@@ -1635,6 +1753,16 @@
 			document.addEventListener('webkitfullscreenchange', handleFullscreenChange); // Safari
 			document.addEventListener('mozfullscreenchange', handleFullscreenChange); // Firefox
 			document.addEventListener('MSFullscreenChange', handleFullscreenChange); // IE/Edge
+		}
+
+		// Check for first-time user
+		if (browser) {
+			if (!localStorage.getItem('tour_seen')) {
+				startOnboarding();
+			} else {
+				tourSeen = true;
+				loadSettings();
+			}
 		}
 	});
 
@@ -1657,12 +1785,12 @@
 
 <div class="min-h-screen bg-background text-foreground flex flex-col">
 	<!-- Header -->
-	<Header />
+	<Header on:help={startOnboarding} />
 
 	<main class="flex-1 flex flex-col p-4 pb-36 space-y-4 max-w-7xl mx-auto w-full">
 		{#if !isSetupComplete}
 			<!-- Setup Mode -->
-			<div class="space-y-4 animate-fade-in">
+			<div class="space-y-4 animate-fade-in" id="setup-container">
 				<!-- Target Mode Selector -->
 				<TargetSetup
 					bind:targetMode
@@ -1678,6 +1806,11 @@
 							// Auto-start calibration if needed (unless freeform mode)
 							if (isStreaming && !targetBoundary && targetMode !== 'freeform') {
 								startCalibration();
+							}
+							// Continue onboarding if active
+							if (driverObj && driverObj.isActive()) {
+								driverObj.destroy(); // Close current step
+								startActiveOnboarding(); // Start next phase
 							}
 						}}
 				/>
@@ -1807,6 +1940,8 @@
 				shotTimerPhase = 'idle';
 			}}
 			on:export={exportShotPattern}
+			on:help={startOnboarding}
+			on:resetApp={resetApp}
 		/>
 	{/if}
 

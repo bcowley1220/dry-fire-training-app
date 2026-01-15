@@ -327,6 +327,7 @@
 </script>
 
 <div
+	id="camera-viewport"
 	class="camera-viewport-container relative w-full bg-card rounded-xl overflow-hidden border border-border aspect-[4/3]"
 >
 	<!-- Camera Feed -->
@@ -481,6 +482,7 @@
 			<div class="absolute top-3 right-3 z-20 flex gap-2">
 				<!-- Background Button -->
 				<button
+					id="btn-set-background"
 					on:click={() => dispatch('toggleBackground')}
 					class="glass border-0 hover:bg-secondary/50 p-2 rounded-lg transition-colors {hasBackground ? 'text-green-400 bg-green-400/10' : ''}"
 					aria-label="Set Background"
