@@ -5,34 +5,54 @@
 	export let backgroundSnapshot = null;
 </script>
 
-<div class="flex flex-wrap gap-2 justify-center">
-	<div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs {isStreaming ? 'bg-success/20 text-success border-success/30' : 'bg-secondary/50 text-foreground border-border'}">
+<div class="flex flex-wrap justify-center gap-2">
+	<div
+		class="flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs {isStreaming
+			? 'border-success/30 bg-success/20 text-success'
+			: 'border-border bg-secondary/50 text-foreground'}"
+	>
 		{#if isStreaming}
-			<span class="w-2 h-2 rounded-full bg-success pulse-active shrink-0"></span>
+			<span class="pulse-active h-2 w-2 shrink-0 rounded-full bg-success"></span>
 		{/if}
-		<span class="text-muted-foreground/80 font-medium">Status</span>
+		<span class="font-medium text-muted-foreground/80">Status</span>
 		<span class="font-mono font-semibold">{isStreaming ? 'Active' : 'Inactive'}</span>
 	</div>
-	<div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs bg-secondary/50 text-foreground border-border">
-		<span class="text-muted-foreground/80 font-medium">Hits</span>
+	<div
+		class="flex items-center gap-2 rounded-full border border-border bg-secondary/50 px-3 py-1.5 text-xs text-foreground"
+	>
+		<span class="font-medium text-muted-foreground/80">Hits</span>
 		<span class="font-mono font-semibold">{hits.length}</span>
 	</div>
-	<div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs {targets.length > 0 ? 'bg-success/20 text-success border-success/30' : 'bg-warning/20 text-warning border-warning/30'}">
-		<span class="w-2 h-2 rounded-full {targets.length > 0 ? 'bg-success' : 'bg-warning'} shrink-0"></span>
-		<span class="text-muted-foreground/80 font-medium">Calibrated</span>
+	<div
+		class="flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs {targets.length > 0
+			? 'border-success/30 bg-success/20 text-success'
+			: 'border-warning/30 bg-warning/20 text-warning'}"
+	>
+		<span class="h-2 w-2 rounded-full {targets.length > 0 ? 'bg-success' : 'bg-warning'} shrink-0"
+		></span>
+		<span class="font-medium text-muted-foreground/80">Calibrated</span>
 		<span class="font-mono font-semibold">{targets.length > 0 ? targets.length : 'No'}</span>
 	</div>
-	<div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs {isStreaming ? 'bg-success/20 text-success border-success/30' : 'bg-secondary/50 text-foreground border-border'}">
+	<div
+		class="flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs {isStreaming
+			? 'border-success/30 bg-success/20 text-success'
+			: 'border-border bg-secondary/50 text-foreground'}"
+	>
 		{#if isStreaming}
-			<span class="w-2 h-2 rounded-full bg-success shrink-0"></span>
+			<span class="h-2 w-2 shrink-0 rounded-full bg-success"></span>
 		{/if}
-		<span class="text-muted-foreground/80 font-medium">Detection</span>
+		<span class="font-medium text-muted-foreground/80">Detection</span>
 		<span class="font-mono font-semibold">{isStreaming ? 'Active' : 'Off'}</span>
 	</div>
 	{#if backgroundSnapshot}
-		<div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs {isStreaming ? 'bg-success/20 text-success border-success/30' : 'bg-secondary/50 text-foreground border-border'}">
-			<span class="w-2 h-2 rounded-full {targets.length > 0 ? 'bg-success' : 'bg-warning'} shrink-0"></span>
-			<span class="text-muted-foreground/80 font-medium">Background</span>
+		<div
+			class="flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs {isStreaming
+				? 'border-success/30 bg-success/20 text-success'
+				: 'border-border bg-secondary/50 text-foreground'}"
+		>
+			<span class="h-2 w-2 rounded-full {targets.length > 0 ? 'bg-success' : 'bg-warning'} shrink-0"
+			></span>
+			<span class="font-medium text-muted-foreground/80">Background</span>
 			<span class="font-mono font-semibold text-green-400">Set</span>
 		</div>
 	{/if}

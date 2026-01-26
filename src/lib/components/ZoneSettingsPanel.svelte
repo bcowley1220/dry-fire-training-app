@@ -29,15 +29,15 @@
 	}
 </script>
 
-<div class={mobile ? 'bg-secondary/50 rounded-lg p-4 mb-4' : ''}>
-	<div class="flex items-center justify-between mb-4 {mobile ? '' : 'mb-6'}">
+<div class={mobile ? 'mb-4 rounded-lg bg-secondary/50 p-4' : ''}>
+	<div class="mb-4 flex items-center justify-between {mobile ? '' : 'mb-6'}">
 		<h3 class={mobile ? 'text-lg font-semibold' : 'text-xl font-semibold'}>Custom Zone Settings</h3>
 		<button
 			on:click={() => dispatch('close')}
-			class="bg-secondary hover:bg-secondary/80 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+			class="rounded-lg bg-secondary px-3 py-1.5 text-sm font-semibold transition-colors hover:bg-secondary/80"
 			aria-label="Close zone settings"
 		>
-			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path
 					stroke-linecap="round"
 					stroke-linejoin="round"
@@ -50,22 +50,22 @@
 	<div class="space-y-6">
 		{#each ['A', 'C', 'D'] as zoneName}
 			{@const zone = zones[zoneName]}
-			<div class="border border-border rounded-lg p-4 bg-background/50">
-				<div class="flex items-center gap-3 mb-3">
+			<div class="rounded-lg border border-border bg-background/50 p-4">
+				<div class="mb-3 flex items-center gap-3">
 					<div
-						class="w-6 h-6 rounded border-2"
+						class="h-6 w-6 rounded border-2"
 						style="background-color: {zone.color}; border-color: {zone.color};"
 					></div>
 					<h4 class="text-md font-semibold" style="color: {zone.color}">
 						{zoneName}-zone ({zone.points} pts)
 					</h4>
 				</div>
-				<div class={mobile ? 'grid grid-cols-1 md:grid-cols-2 gap-4' : 'space-y-4'}>
+				<div class={mobile ? 'grid grid-cols-1 gap-4 md:grid-cols-2' : 'space-y-4'}>
 					<!-- Points -->
 					<div>
 						<label
 							for="points-{zoneName}-{mobile ? 'mobile' : 'desktop'}"
-							class="block text-sm text-muted-foreground mb-1">Points</label
+							class="mb-1 block text-sm text-muted-foreground">Points</label
 						>
 						<input
 							id="points-{zoneName}-{mobile ? 'mobile' : 'desktop'}"
@@ -74,12 +74,12 @@
 							max="10"
 							value={zone.points}
 							on:input={(e) => updateZonePoints(zoneName, e.target.value)}
-							class="w-full bg-background border border-border rounded px-3 py-2 text-foreground"
+							class="w-full rounded border border-border bg-background px-3 py-2 text-foreground"
 						/>
 					</div>
 					<!-- X-axis bounds -->
 					<div>
-						<div class="block text-sm text-muted-foreground mb-1">
+						<div class="mb-1 block text-sm text-muted-foreground">
 							X-axis: {zone.bounds.x[0].toFixed(2)} - {zone.bounds.x[1].toFixed(2)}
 						</div>
 						<div class="space-y-2">
@@ -105,7 +105,7 @@
 					</div>
 					<!-- Y-axis bounds -->
 					<div>
-						<div class="block text-sm text-muted-foreground mb-1">
+						<div class="mb-1 block text-sm text-muted-foreground">
 							Y-axis: {zone.bounds.y[0].toFixed(2)} - {zone.bounds.y[1].toFixed(2)}
 						</div>
 						<div class="space-y-2">
@@ -144,8 +144,8 @@
 
 	<div
 		class={mobile
-			? 'flex items-center justify-between mt-4 pt-4 border-t border-border'
-			: 'mt-6 pt-6 border-t border-border'}
+			? 'mt-4 flex items-center justify-between border-t border-border pt-4'
+			: 'mt-6 border-t border-border pt-6'}
 	>
 		<p class="text-xs text-muted-foreground {mobile ? '' : 'mb-4'}">
 			💡 Tip: Zones are checked from innermost (A) to outermost (D). Make sure A-zone is inside
@@ -155,7 +155,7 @@
 			on:click={() => dispatch('reset')}
 			class="{mobile
 				? ''
-				: 'w-full'} bg-secondary hover:bg-secondary/80 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+				: 'w-full'} rounded-lg bg-secondary px-4 py-2 text-sm font-semibold transition-colors hover:bg-secondary/80"
 		>
 			Reset to Defaults
 		</button>

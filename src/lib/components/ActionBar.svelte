@@ -35,7 +35,7 @@
 	const dispatch = createEventDispatcher();
 </script>
 
-<div class="fixed bottom-0 left-0 right-0 z-40 safe-area-pb">
+<div class="safe-area-pb fixed right-0 bottom-0 left-0 z-40">
 	<div
 		id="action-bar"
 		class="glass border-t border-border transition-all duration-300 ease-out {actionBarExpanded ||
@@ -48,34 +48,41 @@
 		<!-- Toggle Handle -->
 		<button
 			on:click={() => (actionBarExpanded = !actionBarExpanded)}
-			class="w-full py-2 flex items-center justify-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+			class="flex w-full items-center justify-center gap-2 py-2 text-muted-foreground transition-colors hover:text-foreground"
 		>
 			<svg
-				class="w-5 h-5 transition-transform duration-300 {actionBarExpanded ? 'rotate-180' : ''}"
+				class="h-5 w-5 transition-transform duration-300 {actionBarExpanded ? 'rotate-180' : ''}"
 				fill="none"
 				stroke="currentColor"
 				viewBox="0 0 24 24"
 			>
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
 			</svg>
-			<span class="text-xs font-medium">{actionBarExpanded ? 'Hide Controls' : 'More Controls'}</span>
+			<span class="text-xs font-medium"
+				>{actionBarExpanded ? 'Hide Controls' : 'More Controls'}</span
+			>
 		</button>
 
 		<!-- Main Quick Actions -->
-		<div class="px-4 pb-3 flex justify-center gap-3">
+		<div class="flex justify-center gap-3 px-4 pb-3">
 			<button
 				id="btn-calibrate"
 				on:click={() => dispatch('startCalibration')}
 				disabled={calibrationMode || !isStreaming}
-				class="flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all duration-200 active:scale-95 bg-primary/20 hover:bg-primary/30 text-primary border-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
+				class="flex flex-col items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/20 p-3 text-primary transition-all duration-200 hover:bg-primary/30 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
 			>
 				{#if targets.length > 0}
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M12 4v16m8-8H4"
+						/>
 					</svg>
 					<span class="text-xs font-medium">Add Target</span>
 				{:else}
-					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path
 							stroke-linecap="round"
 							stroke-linejoin="round"
@@ -88,9 +95,9 @@
 			</button>
 			<button
 				on:click={() => (showZoneSettings = !showZoneSettings)}
-				class="flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all duration-200 active:scale-95 bg-secondary hover:bg-secondary/80 text-foreground border-border"
+				class="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-secondary p-3 text-foreground transition-all duration-200 hover:bg-secondary/80 active:scale-95"
 			>
-				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path
 						stroke-linecap="round"
 						stroke-linejoin="round"
@@ -103,9 +110,9 @@
 			<button
 				id="btn-drills"
 				on:click={() => (showDrills = !showDrills)}
-				class="flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all duration-200 active:scale-95 bg-warning/20 hover:bg-warning/30 text-warning border-warning/30"
+				class="flex flex-col items-center gap-1.5 rounded-xl border border-warning/30 bg-warning/20 p-3 text-warning transition-all duration-200 hover:bg-warning/30 active:scale-95"
 			>
-				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path
 						stroke-linecap="round"
 						stroke-linejoin="round"
@@ -118,9 +125,9 @@
 			<button
 				on:click={() => dispatch('clearHits')}
 				disabled={hits.length === 0}
-				class="flex flex-col items-center gap-1.5 rounded-xl border p-3 transition-all duration-200 active:scale-95 bg-destructive/20 hover:bg-destructive/30 text-destructive border-destructive/30 disabled:opacity-50 disabled:cursor-not-allowed"
+				class="flex flex-col items-center gap-1.5 rounded-xl border border-destructive/30 bg-destructive/20 p-3 text-destructive transition-all duration-200 hover:bg-destructive/30 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
 			>
-				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path
 						stroke-linecap="round"
 						stroke-linejoin="round"
@@ -134,14 +141,14 @@
 
 		<!-- Expanded Controls -->
 		{#if actionBarExpanded}
-			<div class="px-4 pt-3 border-t border-border/50 animate-fade-in">
-				<div class="flex flex-wrap justify-center gap-3 max-w-md mx-auto">
+			<div class="animate-fade-in border-t border-border/50 px-4 pt-3">
+				<div class="mx-auto flex max-w-md flex-wrap justify-center gap-3">
 					<button
 						on:click={() => dispatch('clearCalibration')}
 						disabled={targets.length === 0}
-						class="flex flex-col items-center gap-1.5 rounded-xl border p-2.5 transition-all duration-200 active:scale-95 bg-secondary hover:bg-secondary/80 text-foreground border-border disabled:opacity-50 disabled:cursor-not-allowed"
+						class="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-secondary p-2.5 text-foreground transition-all duration-200 hover:bg-secondary/80 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
 					>
-						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path
 								stroke-linecap="round"
 								stroke-linejoin="round"
@@ -153,9 +160,9 @@
 					</button>
 					<button
 						on:click={() => dispatch('resetSetup')}
-						class="flex flex-col items-center gap-1.5 rounded-xl border p-2.5 transition-all duration-200 active:scale-95 bg-secondary hover:bg-secondary/80 text-foreground border-border"
+						class="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-secondary p-2.5 text-foreground transition-all duration-200 hover:bg-secondary/80 active:scale-95"
 					>
-						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path
 								stroke-linecap="round"
 								stroke-linejoin="round"
@@ -167,28 +174,43 @@
 					</button>
 					<button
 						on:click={() => (showVisualizationControls = !showVisualizationControls)}
-						class="flex flex-col items-center gap-1.5 rounded-xl border p-2.5 transition-all duration-200 active:scale-95 bg-secondary hover:bg-secondary/80 text-foreground border-border"
+						class="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-secondary p-2.5 text-foreground transition-all duration-200 hover:bg-secondary/80 active:scale-95"
 					>
-						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M4 6h16M4 12h16M4 18h16"
+							/>
 						</svg>
 						<span class="text-[10px] font-medium">Sequence</span>
 					</button>
 					<button
 						on:click={() => dispatch('help')}
-						class="flex flex-col items-center gap-1.5 rounded-xl border p-2.5 transition-all duration-200 active:scale-95 bg-secondary hover:bg-secondary/80 text-foreground border-border"
+						class="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-secondary p-2.5 text-foreground transition-all duration-200 hover:bg-secondary/80 active:scale-95"
 					>
-						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+							/>
 						</svg>
 						<span class="text-[10px] font-medium">Help</span>
 					</button>
 					<button
 						on:click={() => dispatch('resetApp')}
-						class="flex flex-col items-center gap-1.5 rounded-xl border p-2.5 transition-all duration-200 active:scale-95 bg-destructive/10 hover:bg-destructive/20 text-destructive border-destructive/20 w-[72px]"
+						class="flex w-[72px] flex-col items-center gap-1.5 rounded-xl border border-destructive/20 bg-destructive/10 p-2.5 text-destructive transition-all duration-200 hover:bg-destructive/20 active:scale-95"
 					>
-						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+							/>
 						</svg>
 						<span class="text-[10px] font-medium">Reset App</span>
 					</button>
@@ -196,30 +218,50 @@
 
 				<!-- Target List -->
 				{#if targets.length > 0}
-					<div class="mt-4 pt-3 border-t border-border/50">
-						<h4 class="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider text-center">Active Targets</h4>
-						<div class="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+					<div class="mt-4 border-t border-border/50 pt-3">
+						<h4
+							class="mb-2 text-center text-xs font-semibold tracking-wider text-muted-foreground uppercase"
+						>
+							Active Targets
+						</h4>
+						<div class="grid max-h-32 grid-cols-2 gap-2 overflow-y-auto">
 							{#each targets as target}
-								<div class="flex items-center justify-between bg-secondary/30 rounded-lg p-2 border border-border/50">
-									<span class="text-xs font-medium truncate">{target.name}</span>
+								<div
+									class="flex items-center justify-between rounded-lg border border-border/50 bg-secondary/30 p-2"
+								>
+									<span class="truncate text-xs font-medium">{target.name}</span>
 									<div class="flex items-center">
-										<button 
+										<button
 											on:click={() => {
 												const newName = prompt('Rename target:', target.name);
 												if (newName) dispatch('renameTarget', { id: target.id, name: newName });
 											}}
-											class="text-muted-foreground hover:text-primary transition-colors p-1 mr-1"
+											class="mr-1 p-1 text-muted-foreground transition-colors hover:text-primary"
 											aria-label="Rename target"
 										>
-											<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+											<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+												><path
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													stroke-width="2"
+													d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+												/></svg
+											>
 										</button>
-									<button 
-										on:click={() => dispatch('removeTarget', target.id)}
-										class="text-muted-foreground hover:text-destructive transition-colors p-1"
-										aria-label="Remove target"
-									>
-										<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-									</button>
+										<button
+											on:click={() => dispatch('removeTarget', target.id)}
+											class="p-1 text-muted-foreground transition-colors hover:text-destructive"
+											aria-label="Remove target"
+										>
+											<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+												><path
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													stroke-width="2"
+													d="M6 18L18 6M6 6l12 12"
+												/></svg
+											>
+										</button>
 									</div>
 								</div>
 							{/each}
@@ -228,12 +270,12 @@
 				{/if}
 
 				<!-- Debug Section -->
-				<div class="mt-4 pt-3 border-t border-border/50 flex justify-center gap-3">
+				<div class="mt-4 flex justify-center gap-3 border-t border-border/50 pt-3">
 					<button
 						on:click={() => (showDiagnosticOverlay = !showDiagnosticOverlay)}
-						class="text-muted-foreground hover:text-foreground text-sm flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-secondary/50 transition-colors"
+						class="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
 					>
-						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path
 								stroke-linecap="round"
 								stroke-linejoin="round"
@@ -245,9 +287,9 @@
 					</button>
 					<button
 						on:click={() => (showDebugOverlay = !showDebugOverlay)}
-						class="text-muted-foreground hover:text-foreground text-sm flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-secondary/50 transition-colors"
+						class="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
 					>
-						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path
 								stroke-linecap="round"
 								stroke-linejoin="round"
@@ -264,7 +306,9 @@
 		<!-- Mobile Panels -->
 		<div class="md:hidden">
 			{#if showZoneSettings}
-				<div class="px-4 pt-3 border-t border-border/50 animate-fade-in max-h-[50vh] overflow-y-auto">
+				<div
+					class="animate-fade-in max-h-[50vh] overflow-y-auto border-t border-border/50 px-4 pt-3"
+				>
 					<ZoneSettingsPanel
 						bind:zones
 						mobile={true}
@@ -275,7 +319,9 @@
 			{/if}
 
 			{#if showDrills}
-				<div class="px-4 pt-3 border-t border-border/50 animate-fade-in max-h-[50vh] overflow-y-auto">
+				<div
+					class="animate-fade-in max-h-[50vh] overflow-y-auto border-t border-border/50 px-4 pt-3"
+				>
 					<DrillsPanel
 						mobile={true}
 						active={shotTimerActive}
@@ -296,7 +342,9 @@
 			{/if}
 
 			{#if showVisualizationControls}
-				<div class="px-4 pt-3 border-t border-border/50 animate-fade-in max-h-[50vh] overflow-y-auto">
+				<div
+					class="animate-fade-in max-h-[50vh] overflow-y-auto border-t border-border/50 px-4 pt-3"
+				>
 					<VisualizationPanel
 						mobile={true}
 						bind:visualizationState

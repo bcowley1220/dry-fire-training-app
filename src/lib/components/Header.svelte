@@ -1,18 +1,18 @@
 <header
-	class="flex items-center justify-between px-4 py-3 border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-30"
+	class="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-card/80 px-4 py-3 backdrop-blur-md"
 >
 	<div class="flex items-center gap-3">
-		<div class="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
-			<span class="text-primary font-bold text-base">🎯</span>
+		<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/20">
+			<span class="text-base font-bold text-primary">🎯</span>
 		</div>
 		<div>
-			<h1 class="font-semibold text-sm">Dry-Fire Trainer</h1>
+			<h1 class="text-sm font-semibold">Dry-Fire Trainer</h1>
 			<p class="text-xs text-muted-foreground">Laser Detection</p>
 		</div>
 	</div>
 	<div class="flex items-center gap-1">
-		<button class="p-2 hover:bg-secondary/50 rounded-lg transition-colors">
-			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<button class="rounded-lg p-2 transition-colors hover:bg-secondary/50">
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path
 					stroke-linecap="round"
 					stroke-linejoin="round"
@@ -21,8 +21,8 @@
 				/>
 			</svg>
 		</button>
-		<button class="p-2 hover:bg-secondary/50 rounded-lg transition-colors">
-			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+		<button class="rounded-lg p-2 transition-colors hover:bg-secondary/50">
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path
 					stroke-linecap="round"
 					stroke-linejoin="round"

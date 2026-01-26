@@ -7,6 +7,7 @@ This is just a demo version to do proof of concept testing.
 ## Features
 
 ### 🎯 Camera-Based Laser Detection
+
 - **Automatic Detection**: Detects red and green laser training rounds in real-time
 - **Zone-Based Scoring**: Supports IPSC-style zones (A, C, D) with customizable point values
 - **Multiple Target Modes**:
@@ -15,6 +16,7 @@ This is just a demo version to do proof of concept testing.
   - **Freeform Mode**: Track hits without zone restrictions
 
 ### ⏱️ Shot Timer
+
 - **Random Start Delay**: Configurable random delay (2-5 seconds default) before the beep
 - **Draw Time Measurement**: Measures time from beep to first shot
 - **Automatic Next Round**: Set number of rounds and reset duration for continuous practice
@@ -22,6 +24,7 @@ This is just a demo version to do proof of concept testing.
 - **False Start Detection**: Alerts if you shoot before the beep
 
 ### 📊 Shot Analysis
+
 - **Shot Sequence Visualization**: See your shot pattern with numbered hits and connecting lines
 - **Zone Distribution**: View hit distribution across zones
 - **Shot Group Analysis**: Calculate group size and spread
@@ -29,6 +32,7 @@ This is just a demo version to do proof of concept testing.
 - **Export**: Export shot patterns for analysis
 
 ### 📱 Responsive Design
+
 - **Mobile-Friendly**: Works on phones, tablets, and desktops
 - **Touch Controls**: Full touch support for calibration and navigation
 - **Camera Zoom & Pan**: Pinch to zoom and drag to pan the camera view
@@ -44,6 +48,7 @@ This is just a demo version to do proof of concept testing.
 ## Installation
 
 1. **Clone the repository**:
+
    ```bash
    git clone <repository-url>
    cd dry-fire-trainer
@@ -92,7 +97,7 @@ npm run preview
 
 1. **Grant Camera Permissions**: When you first open the app, your browser will prompt for camera access. Click "Allow" to enable camera detection.
 
-2. **Position Your Target**: 
+2. **Position Your Target**:
    - Place a target (calendar, paper target, or any flat surface) on a wall
    - Ensure good lighting
    - Position your device/camera 5-6 feet away from the target
@@ -110,11 +115,13 @@ npm run preview
 ### Target Modes
 
 #### Preloaded Templates
+
 - Select a template (e.g., "IPSC Classic")
 - Calibrate your target
 - Zones will automatically load after calibration
 
 #### Custom Zones
+
 - Select "Custom" mode
 - Calibrate your target
 - Click **"Define Zones Visually"**
@@ -122,6 +129,7 @@ npm run preview
 - Set point values for each zone
 
 #### Freeform Mode
+
 - Select "Freeform" mode
 - No calibration required
 - All hits are tracked regardless of location
@@ -158,6 +166,7 @@ npm run preview
 ### Debug Mode
 
 If detection isn't working:
+
 1. Click **"Debug"** button
 2. Point your laser at the target
 3. You'll see red/green dots on pixels that match detection criteria
@@ -166,12 +175,14 @@ If detection isn't working:
 ## Troubleshooting
 
 ### Camera Not Working
+
 - **Check Permissions**: Ensure camera permissions are granted in browser settings
 - **Try Different Browser**: Some browsers handle camera access differently
 - **Check Camera**: Make sure no other app is using the camera
 - **HTTPS Required**: Some browsers require HTTPS for camera access (localhost is OK)
 
 ### Detection Not Working
+
 - **Enable Debug Mode**: Use the Debug button to see what pixels are being detected
 - **Check Lighting**: Ensure adequate but not excessive lighting
 - **Remove Red Objects**: Red objects in view can cause false positives
@@ -179,16 +190,19 @@ If detection isn't working:
 - **Clean Camera Lens**: Ensure camera lens is clean
 
 ### False Positives
+
 - **Remove Red Objects**: Remove red items from camera view
 - **Adjust Detection**: The app uses color thresholds - very bright red objects may trigger detection
 - **Use Debug Mode**: Identify what's causing false positives
 
 ### Shot Timer Issues
+
 - **No Beep**: Check volume settings and browser audio permissions
 - **False Start Alert**: Make sure you're waiting for the beep before shooting
 - **Timer Not Starting**: Ensure you've clicked "I'm Ready - Start Drill"
 
 ### Performance Issues
+
 - **Close Other Tabs**: Camera processing is resource-intensive
 - **Lower Resolution**: Some devices may struggle with high-resolution video
 - **Update Browser**: Ensure you're using the latest browser version
@@ -196,13 +210,15 @@ If detection isn't working:
 ## Technical Details
 
 ### Technology Stack
+
 - **Framework**: SvelteKit 2.x
 - **Styling**: Tailwind CSS 4.x
 - **Build Tool**: Vite
 - **Language**: JavaScript (ES6+)
 
 ### Detection Algorithm
-- **Color Thresholds**: 
+
+- **Color Thresholds**:
   - Red: R > 150, G < 70, B < 70
   - Green: G > 150, R < 70, B < 70
 - **Cluster Detection**: Groups nearby pixels to identify laser dots
@@ -210,12 +226,14 @@ If detection isn't working:
 - **Real-time Processing**: Processes every frame at video frame rate
 
 ### Browser Compatibility
+
 - ✅ Chrome/Edge (recommended)
 - ✅ Firefox
 - ✅ Safari (iOS 11+)
 - ⚠️ Older browsers may have limited camera support
 
 ### Performance
+
 - **Frame Rate**: Typically 30-60 FPS depending on device
 - **Latency**: Detection latency is typically <100ms
 - **CPU Usage**: Moderate - camera processing is CPU-intensive
@@ -223,6 +241,7 @@ If detection isn't working:
 ## Development
 
 ### Project Structure
+
 ```
 dry-fire-trainer/
 ├── src/
@@ -238,12 +257,14 @@ dry-fire-trainer/
 ```
 
 ### Code Formatting
+
 ```bash
 npm run format    # Format code with Prettier
 npm run lint      # Check code formatting and linting
 ```
 
 ### Key Functions
+
 - `detectLaserDots()`: Main detection algorithm
 - `handleTimerHit()`: Processes hits during shot timer
 - `startDrill()`: Initiates shot timer sequence
@@ -252,6 +273,7 @@ npm run lint      # Check code formatting and linting
 ## Contributing
 
 When testing, please report:
+
 - Browser and version
 - Device type (mobile/tablet/desktop)
 - Camera resolution

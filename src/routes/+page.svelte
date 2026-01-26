@@ -3,6 +3,7 @@
 	import { browser } from '$app/environment';
 	import { detectLaserDots, CLUSTER_RADIUS } from '$lib/utils/detection.js';
 	import { DEFAULT_ZONES, templates } from '../lib/utils/zones.js';
+	import { requestWakeLock, releaseWakeLock } from '$lib/utils/wakelock.js';
 	import DrillsPanel from '$lib/components/DrillsPanel.svelte';
 	import ZoneSettingsPanel from '$lib/components/ZoneSettingsPanel.svelte';
 	import VisualizationPanel from '$lib/components/VisualizationPanel.svelte';
@@ -40,7 +41,7 @@
 	let isSetupComplete = $state(false); // Track if setup is complete
 	let isTemplateDropdownOpen = $state(false);
 	let actionBarExpanded = $state(false);
-	
+
 	// Customizable zones (start with defaults)
 	let zones = $state(JSON.parse(JSON.stringify(DEFAULT_ZONES)));
 	let showZoneSettings = $state(false);
@@ -144,7 +145,8 @@
 				await videoElement.play();
 				isStreaming = true;
 				startDetection();
-				
+				requestWakeLock();
+
 				// Auto-start calibration if setup is complete and calibration is needed (unless freeform mode)
 				if (isSetupComplete && targets.length === 0 && targetMode !== 'freeform') {
 					startCalibration();
@@ -166,6 +168,7 @@
 		}
 		isStreaming = false;
 		stopDetection();
+		releaseWakeLock();
 	}
 
 	function startDetection() {
@@ -226,15 +229,18 @@
 		// We calculate the union of all target bounding boxes
 		let roi = null;
 		if (targets.length > 0) {
-			let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-			targets.forEach(t => {
+			let minX = Infinity,
+				maxX = -Infinity,
+				minY = Infinity,
+				maxY = -Infinity;
+			targets.forEach((t) => {
 				const bbox = getTargetBoundingBox(t.boundary);
 				minX = Math.min(minX, bbox.minX);
 				maxX = Math.max(maxX, bbox.maxX);
 				minY = Math.min(minY, bbox.minY);
 				maxY = Math.max(maxY, bbox.maxY);
 			});
-			
+
 			roi = {
 				minX: Math.max(0, Math.floor(minX)),
 				maxX: Math.min(canvas.width, Math.ceil(maxX)),
@@ -244,7 +250,15 @@
 		}
 
 		// Detect laser dots
-		const detectedHits = detectLaserDots(pixels, canvas.width, canvas.height, showDebugOverlay, backgroundSnapshot, backgroundThreshold, roi);
+		const detectedHits = detectLaserDots(
+			pixels,
+			canvas.width,
+			canvas.height,
+			showDebugOverlay,
+			backgroundSnapshot,
+			backgroundThreshold,
+			roi
+		);
 		// Process detected hits
 		for (const hit of detectedHits) {
 			// Check if we're in shot timer cooldown period
@@ -260,7 +274,7 @@
 			if (targets.length > 0 && zoneInfo.zone === 'Miss' && targetMode !== 'freeform') {
 				continue;
 			}
-			
+
 			// For zone-based modes without calibration, skip (can't detect zones)
 			if (targets.length === 0 && targetMode !== 'freeform' && zoneInfo.zone === 'Miss') {
 				continue;
@@ -279,7 +293,7 @@
 			if (!isDuplicate && timeSinceLastHit >= hitDebounceMs) {
 				// Increment shot counter for this session
 				sessionShotCounter++;
-				
+
 				const newHit = {
 					id: crypto.randomUUID(),
 					x: hit.x,
@@ -293,12 +307,12 @@
 					shotNumber: sessionShotCounter,
 					displayUntil: now + 2000 // Show marker for 2 seconds
 				};
-				
+
 				// Check if shot timer is active
 				if (shotTimerActive) {
 					const consumed = handleTimerHit(newHit);
 				}
-				
+
 				hits = [...hits, newHit];
 				lastHitTime = now;
 			}
@@ -321,22 +335,22 @@
 		if (!visualizationState.showSequenceLines || visibleHits.length < 2) {
 			return;
 		}
-		
+
 		ctx.strokeStyle = visualizationState.lineColor;
 		ctx.lineWidth = visualizationState.lineWidth;
 		ctx.setLineDash([5, 5]); // Dashed line
-		
+
 		// Draw lines between consecutive shots
 		for (let i = 0; i < visibleHits.length - 1; i++) {
 			const currentHit = visibleHits[i];
 			const nextHit = visibleHits[i + 1];
-			
+
 			ctx.beginPath();
 			ctx.moveTo(currentHit.x, currentHit.y);
 			ctx.lineTo(nextHit.x, nextHit.y);
 			ctx.stroke();
 		}
-		
+
 		ctx.setLineDash([]); // Reset to solid line
 	}
 
@@ -344,7 +358,7 @@
 		const now = Date.now();
 		// Skip expiry check in replay mode
 		if (!skipExpiryCheck && now >= hit.displayUntil) return;
-		
+
 		// Draw hit circle
 		ctx.strokeStyle = hit.color === 'red' ? '#ff0000' : '#00ff00';
 		ctx.fillStyle = hit.color === 'red' ? 'rgba(255, 0, 0, 0.3)' : 'rgba(0, 255, 0, 0.3)';
@@ -353,7 +367,7 @@
 		ctx.arc(hit.x, hit.y, 20, 0, Math.PI * 2);
 		ctx.fill();
 		ctx.stroke();
-		
+
 		// Draw shot number if enabled
 		if (visualizationState.showShotNumbers && hit.shotNumber) {
 			// Draw background circle for better readability
@@ -361,7 +375,7 @@
 			ctx.beginPath();
 			ctx.arc(hit.x, hit.y, 12, 0, Math.PI * 2);
 			ctx.fill();
-			
+
 			// Draw number
 			ctx.fillStyle = visualizationState.numberColor;
 			ctx.font = `bold ${visualizationState.numberSize}px sans-serif`;
@@ -376,16 +390,16 @@
 		const centerX = width / 2;
 		const centerY = height / 2;
 		const radius = Math.min(width, height) * 0.4; // 40% of smaller dimension
-		
+
 		// Save context
 		ctx.save();
-		
+
 		// Draw semi-transparent background circle
 		ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
 		ctx.beginPath();
 		ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
 		ctx.fill();
-		
+
 		// Draw concentric rings (bullseye)
 		ctx.strokeStyle = '#000000';
 		ctx.lineWidth = 2;
@@ -395,28 +409,82 @@
 			ctx.arc(centerX, centerY, ringRadius, 0, Math.PI * 2);
 			ctx.stroke();
 		}
-		
+
 		// Draw center bullseye
 		ctx.fillStyle = '#000000';
 		ctx.beginPath();
 		ctx.arc(centerX, centerY, radius * 0.1, 0, Math.PI * 2);
 		ctx.fill();
-		
+
 		// Draw radial lines dividing the pie segments
 		ctx.strokeStyle = '#000000';
 		ctx.lineWidth = 1;
 		const segments = [
-			{ start: -Math.PI * 0.75, end: -Math.PI * 0.25, label: 'PUSHING\nANTICIPATING RECOIL', x: centerX - radius * 0.6, y: centerY - radius * 0.6 },
-			{ start: -Math.PI * 0.25, end: Math.PI * 0.25, label: 'BREAKING\nWRIST UP', x: centerX, y: centerY - radius * 0.7 },
-			{ start: Math.PI * 0.25, end: Math.PI * 0.75, label: 'HEELING\nANTICIPATING RECOIL', x: centerX + radius * 0.6, y: centerY - radius * 0.6 },
-			{ start: Math.PI * 0.75, end: Math.PI * 1.25, label: 'THUMBING', x: centerX + radius * 0.7, y: centerY },
-			{ start: Math.PI * 1.25, end: Math.PI * 1.75, label: 'SQUEEZING\nWHOLE HAND', x: centerX + radius * 0.6, y: centerY + radius * 0.6 },
-			{ start: Math.PI * 1.75, end: -Math.PI * 1.75, label: 'BREAKING\nWRIST DOWN', x: centerX, y: centerY + radius * 0.7 },
-			{ start: -Math.PI * 1.75, end: -Math.PI * 1.25, label: 'JERKING', x: centerX - radius * 0.7, y: centerY + radius * 0.6 },
-			{ start: -Math.PI * 1.25, end: -Math.PI * 0.75, label: 'SQUEEZING\nFINGER TIPS', x: centerX - radius * 0.6, y: centerY + radius * 0.3 },
-			{ start: -Math.PI * 0.5, end: -Math.PI * 0.25, label: 'TOO MUCH/TOO LITTLE\nTRIGGER FINGER', x: centerX - radius * 0.6, y: centerY - radius * 0.2 }
+			{
+				start: -Math.PI * 0.75,
+				end: -Math.PI * 0.25,
+				label: 'PUSHING\nANTICIPATING RECOIL',
+				x: centerX - radius * 0.6,
+				y: centerY - radius * 0.6
+			},
+			{
+				start: -Math.PI * 0.25,
+				end: Math.PI * 0.25,
+				label: 'BREAKING\nWRIST UP',
+				x: centerX,
+				y: centerY - radius * 0.7
+			},
+			{
+				start: Math.PI * 0.25,
+				end: Math.PI * 0.75,
+				label: 'HEELING\nANTICIPATING RECOIL',
+				x: centerX + radius * 0.6,
+				y: centerY - radius * 0.6
+			},
+			{
+				start: Math.PI * 0.75,
+				end: Math.PI * 1.25,
+				label: 'THUMBING',
+				x: centerX + radius * 0.7,
+				y: centerY
+			},
+			{
+				start: Math.PI * 1.25,
+				end: Math.PI * 1.75,
+				label: 'SQUEEZING\nWHOLE HAND',
+				x: centerX + radius * 0.6,
+				y: centerY + radius * 0.6
+			},
+			{
+				start: Math.PI * 1.75,
+				end: -Math.PI * 1.75,
+				label: 'BREAKING\nWRIST DOWN',
+				x: centerX,
+				y: centerY + radius * 0.7
+			},
+			{
+				start: -Math.PI * 1.75,
+				end: -Math.PI * 1.25,
+				label: 'JERKING',
+				x: centerX - radius * 0.7,
+				y: centerY + radius * 0.6
+			},
+			{
+				start: -Math.PI * 1.25,
+				end: -Math.PI * 0.75,
+				label: 'SQUEEZING\nFINGER TIPS',
+				x: centerX - radius * 0.6,
+				y: centerY + radius * 0.3
+			},
+			{
+				start: -Math.PI * 0.5,
+				end: -Math.PI * 0.25,
+				label: 'TOO MUCH/TOO LITTLE\nTRIGGER FINGER',
+				x: centerX - radius * 0.6,
+				y: centerY - radius * 0.2
+			}
 		];
-		
+
 		// Draw pie segments with labels
 		for (const segment of segments) {
 			// Draw segment arc
@@ -429,7 +497,7 @@
 			ctx.strokeStyle = '#000000';
 			ctx.lineWidth = 1;
 			ctx.stroke();
-			
+
 			// Draw label
 			ctx.fillStyle = '#000000';
 			ctx.font = 'bold 12px sans-serif';
@@ -440,13 +508,13 @@
 				ctx.fillText(line, segment.x, segment.y + (i - (lines.length - 1) / 2) * 14);
 			});
 		}
-		
+
 		// Draw "RIGHT HANDED SHOOTER" label at bottom
 		ctx.fillStyle = '#000000';
 		ctx.font = 'bold 14px sans-serif';
 		ctx.textAlign = 'center';
 		ctx.fillText('RIGHT HANDED SHOOTER', centerX, centerY + radius + 30);
-		
+
 		// Restore context
 		ctx.restore();
 	}
@@ -454,20 +522,25 @@
 	function drawDebugOverlay(ctx, width, height) {
 		// Draw debug pixels that match detection criteria
 		if (!window.debugPixels || window.debugPixels.length === 0) return;
-		
+
 		ctx.save();
-		
+
 		// Draw each matching pixel
 		for (const pixel of window.debugPixels) {
 			// Draw a small circle at matching pixels
-			ctx.fillStyle = pixel.color === 'red' 
-				? (pixel.matched ? 'rgba(255, 0, 0, 0.5)' : 'rgba(255, 100, 100, 0.3)')
-				: (pixel.matched ? 'rgba(0, 255, 0, 0.5)' : 'rgba(100, 255, 100, 0.3)');
+			ctx.fillStyle =
+				pixel.color === 'red'
+					? pixel.matched
+						? 'rgba(255, 0, 0, 0.5)'
+						: 'rgba(255, 100, 100, 0.3)'
+					: pixel.matched
+						? 'rgba(0, 255, 0, 0.5)'
+						: 'rgba(100, 255, 100, 0.3)';
 			ctx.beginPath();
 			ctx.arc(pixel.x, pixel.y, 2, 0, Math.PI * 2);
 			ctx.fill();
 		}
-		
+
 		// Draw RGB info for the brightest matching pixel
 		if (window.debugPixels.length > 0) {
 			const brightest = window.debugPixels.reduce((max, p) => {
@@ -475,7 +548,7 @@
 				const maxBrightness = max.r + max.g + max.b;
 				return brightness > maxBrightness ? p : max;
 			});
-			
+
 			ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
 			ctx.fillRect(10, 10, 200, 60);
 			ctx.fillStyle = '#ffffff';
@@ -485,7 +558,7 @@
 			ctx.fillText(`RGB: (${brightest.r}, ${brightest.g}, ${brightest.b})`, 15, 40);
 			ctx.fillText(`Pos: (${brightest.x}, ${brightest.y})`, 15, 55);
 		}
-		
+
 		ctx.restore();
 	}
 
@@ -505,11 +578,11 @@
 
 			// Draw ROI bounding box in debug mode
 			if (targets.length > 0) {
-				// We can re-calculate ROI here or pass it from processFrames if we refactor, 
+				// We can re-calculate ROI here or pass it from processFrames if we refactor,
 				// but for debug drawing, let's just draw individual target boxes
 				ctx.strokeStyle = 'cyan';
 				ctx.lineWidth = 1;
-				targets.forEach(t => {
+				targets.forEach((t) => {
 					const bbox = getTargetBoundingBox(t.boundary);
 					ctx.strokeRect(bbox.minX, bbox.minY, bbox.maxX - bbox.minX, bbox.maxY - bbox.minY);
 				});
@@ -548,10 +621,10 @@
 							width: targetWidth * (zone.normalized.maxX - zone.normalized.minX),
 							height: targetHeight * (zone.normalized.maxY - zone.normalized.minY)
 						};
-						
+
 						ctx.fillStyle = hexToRgba(zone.color, 0.2);
 						ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
-						
+
 						// Draw zone label
 						ctx.fillStyle = zone.color;
 						ctx.font = 'bold 24px sans-serif';
@@ -564,14 +637,14 @@
 					for (const zoneName of ['D', 'C', 'A']) {
 						const zone = zones[zoneName];
 						if (!zone) continue;
-						
+
 						const rect = {
 							x: bbox.minX + targetWidth * zone.bounds.x[0],
 							y: bbox.minY + targetHeight * zone.bounds.y[0],
 							width: targetWidth * (zone.bounds.x[1] - zone.bounds.x[0]),
 							height: targetHeight * (zone.bounds.y[1] - zone.bounds.y[0])
 						};
-						
+
 						ctx.fillStyle = hexToRgba(zone.color, 0.2);
 						ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
 					}
@@ -600,18 +673,18 @@
 		// Determine which hits to display (for replay mode)
 		const now = Date.now();
 		let visibleHits;
-		
+
 		if (visualizationState.showAllShots) {
 			// Normal mode: show all hits that haven't expired
-			visibleHits = hits.filter(hit => now < hit.displayUntil);
+			visibleHits = hits.filter((hit) => now < hit.displayUntil);
 		} else {
 			// Replay mode: show hits up to currentReplayShot, regardless of displayUntil
 			visibleHits = hits.slice(0, visualizationState.currentReplayShot);
 		}
-		
+
 		// Draw sequence lines BEFORE hit markers (so lines are behind)
 		drawSequenceLines(ctx, visibleHits);
-		
+
 		// Draw hit markers with numbers
 		// Skip expiry check in replay mode (showAllShots = false)
 		const skipExpiryCheck = !visualizationState.showAllShots;
@@ -659,8 +732,7 @@
 		for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
 			const [xi, yi] = points[i];
 			const [xj, yj] = points[j];
-			const intersect =
-				yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+			const intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
 			if (intersect) inside = !inside;
 		}
 		return inside;
@@ -681,36 +753,36 @@
 		const height = bbox.maxY - bbox.minY;
 		const cellWidth = width / grid.cols;
 		const cellHeight = height / grid.rows;
-		
+
 		ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
 		ctx.lineWidth = 1;
-		
+
 		// Draw vertical lines
 		for (let i = 0; i <= grid.cols; i++) {
-			const x = bbox.minX + (i * cellWidth);
+			const x = bbox.minX + i * cellWidth;
 			ctx.beginPath();
 			ctx.moveTo(x, bbox.minY);
 			ctx.lineTo(x, bbox.maxY);
 			ctx.stroke();
 		}
-		
+
 		// Draw horizontal lines
 		for (let i = 0; i <= grid.rows; i++) {
-			const y = bbox.minY + (i * cellHeight);
+			const y = bbox.minY + i * cellHeight;
 			ctx.beginPath();
 			ctx.moveTo(bbox.minX, y);
 			ctx.lineTo(bbox.maxX, y);
 			ctx.stroke();
 		}
-		
+
 		// Draw cell labels
 		ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
 		ctx.font = '12px sans-serif';
-		
+
 		for (let row = 0; row < grid.rows; row++) {
 			for (let col = 0; col < grid.cols; col++) {
-				const x = bbox.minX + (col * cellWidth) + 5;
-				const y = bbox.minY + (row * cellHeight) + 15;
+				const x = bbox.minX + col * cellWidth + 5;
+				const y = bbox.minY + row * cellHeight + 15;
 				const colLabel = String.fromCharCode(65 + col);
 				const rowLabel = row + 1;
 				ctx.fillText(`${colLabel}${rowLabel}`, x, y);
@@ -723,11 +795,11 @@
 		const bbox = getTargetBoundingBox(boundary);
 		const width = bbox.maxX - bbox.minX;
 		const height = bbox.maxY - bbox.minY;
-		
+
 		// Normalize relative to bounding box
 		const normalizedX = (x - bbox.minX) / width;
 		const normalizedY = (y - bbox.minY) / height;
-		
+
 		return { x: normalizedX, y: normalizedY };
 	}
 
@@ -752,15 +824,14 @@
 		// Iterate through all targets
 		for (const target of targets) {
 			const boundary = target.boundary;
-			
+
 			// Check if hit is within this target
 			if (isPointInBoundary(x, y, boundary)) {
-				
 				// Pre-loaded template mode: use template zones
 				if (targetMode === 'preloaded' && templates[selectedTemplate]?.zones) {
 					const template = templates[selectedTemplate];
 					const normalized = normalizeHitCoordinates(x, y, boundary);
-					
+
 					// Check zones from innermost to outermost
 					for (const zone of template.zones) {
 						if (
@@ -769,7 +840,12 @@
 							normalized.y >= zone.normalized.minY &&
 							normalized.y <= zone.normalized.maxY
 						) {
-							return { zone: zone.name, points: zone.points, color: zone.color, targetId: target.id };
+							return {
+								zone: zone.name,
+								points: zone.points,
+								color: zone.color,
+								targetId: target.id
+							};
 						}
 					}
 					// Hit the target but missed defined zones? Count as generic hit or miss?
@@ -781,17 +857,26 @@
 				// If custom bounds exist, use point-in-polygon test, otherwise use normalized bounds
 				if (targetMode === 'custom') {
 					const normalized = normalizeHitCoordinates(x, y, boundary);
-					
+
 					for (const zoneName of ['A', 'C', 'D']) {
 						const zone = zones[zoneName];
 						if (!zone) continue;
-						
-						if (normalized.x >= zone.bounds.x[0] && normalized.x <= zone.bounds.x[1] &&
-							normalized.y >= zone.bounds.y[0] && normalized.y <= zone.bounds.y[1]) {
-							return { zone: zone.name, points: zone.points, color: zone.color, targetId: target.id };
+
+						if (
+							normalized.x >= zone.bounds.x[0] &&
+							normalized.x <= zone.bounds.x[1] &&
+							normalized.y >= zone.bounds.y[0] &&
+							normalized.y <= zone.bounds.y[1]
+						) {
+							return {
+								zone: zone.name,
+								points: zone.points,
+								color: zone.color,
+								targetId: target.id
+							};
 						}
 					}
-					
+
 					return { zone: target.name, points: 0, color: '#3b82f6', targetId: target.id };
 				}
 			}
@@ -802,7 +887,7 @@
 
 	function handleCanvasClick(e) {
 		const { x, y, event } = e.detail;
-		
+
 		// Prevent double-firing: debounce rapid events
 		const now = Date.now();
 		if (event.type === 'touchstart') {
@@ -815,7 +900,7 @@
 			}
 			lastCalibrationClickTime = now;
 		}
-		
+
 		if (zoneCalibrationMode) {
 			handleZoneCalibrationClick(x, y);
 		} else if (calibrationMode) {
@@ -832,26 +917,40 @@
 				id: crypto.randomUUID(),
 				name: `Target ${targets.length + 1}`,
 				boundary: {
-				x1: calibrationPoints[0].x,
-				y1: calibrationPoints[0].y,
-				x2: calibrationPoints[1].x,
-				y2: calibrationPoints[1].y,
-				x3: calibrationPoints[2].x,
-				y3: calibrationPoints[2].y,
-				x4: calibrationPoints[3].x,
+					x1: calibrationPoints[0].x,
+					y1: calibrationPoints[0].y,
+					x2: calibrationPoints[1].x,
+					y2: calibrationPoints[1].y,
+					x3: calibrationPoints[2].x,
+					y3: calibrationPoints[2].y,
+					x4: calibrationPoints[3].x,
 					y4: calibrationPoints[3].y
 				}
 			};
-			
+
 			targets = [...targets, newTarget];
 			calibrationMode = false;
 			calibrationPoints = [];
-			
+
 			// Load template zones if pre-loaded mode
 			if (targetMode === 'preloaded') {
 				loadTemplateZones(selectedTemplate);
 			}
 		}
+	}
+
+	function removeTarget(id) {
+		targets = targets.filter((t) => t.id !== id);
+		// If no targets left, clear relevant state
+		if (targets.length === 0) {
+			customZoneBounds = { A: null, C: null, D: null };
+			zoneCalibrationMode = null;
+			zoneCalibrationPoints = [];
+		}
+	}
+
+	function renameTarget(id, name) {
+		targets = targets.map((t) => (t.id === id ? { ...t, name } : t));
 	}
 
 	function handleZoneCalibrationClick(x, y) {
@@ -931,7 +1030,7 @@
 	function loadTemplateZones(templateId) {
 		const template = templates[templateId];
 		if (!template || !template.zones || template.zones.length === 0) return;
-		
+
 		// Convert template zones to the zones format
 		const newZones = {};
 		for (const zone of template.zones) {
@@ -966,14 +1065,14 @@
 
 		const normalized = normalizeHitCoordinates(x, y, boundary);
 		const grid = template.grid;
-		
+
 		const col = Math.min(Math.floor(normalized.x * grid.cols), grid.cols - 1);
 		const row = Math.min(Math.floor(normalized.y * grid.rows), grid.rows - 1);
-		
+
 		// Convert to battleship-style notation (A1, B2, C5, etc.)
 		const colLabel = String.fromCharCode(65 + col); // A, B, C...
 		const rowLabel = row + 1; // 1, 2, 3...
-		
+
 		return {
 			name: `${colLabel}${rowLabel}`,
 			points: null,
@@ -1000,10 +1099,10 @@
 
 	async function toggleFullscreen() {
 		if (!browser) return;
-		
+
 		const cameraViewport = document.querySelector('.camera-viewport-container');
 		if (!cameraViewport) return;
-		
+
 		try {
 			if (!document.fullscreenElement) {
 				// Enter fullscreen
@@ -1067,8 +1166,8 @@
 		if (targetMode === 'freeform') {
 			const avgX = hits.length > 0 ? hits.reduce((sum, h) => sum + h.x, 0) / hits.length : 0;
 			const avgY = hits.length > 0 ? hits.reduce((sum, h) => sum + h.y, 0) / hits.length : 0;
-			return { 
-				total: null, 
+			return {
+				total: null,
 				breakdown: null,
 				averagePosition: { x: avgX, y: avgY }
 			};
@@ -1106,12 +1205,12 @@
 
 	function getZoneColor(zone) {
 		if (!zone) return '#9ca3af';
-		
+
 		// Grid cells (e.g., "A1", "B2", "C5")
 		if (/^[A-Z]\d+$/.test(zone)) {
 			return '#3b82f6'; // blue for grids
 		}
-		
+
 		switch (zone) {
 			case 'A':
 				return zones.A?.color || '#4ade80';
@@ -1157,14 +1256,14 @@
 			const ctx = getAudioContext();
 			const oscillator = ctx.createOscillator();
 			const gainNode = ctx.createGain();
-			
+
 			oscillator.connect(gainNode);
 			gainNode.connect(ctx.destination);
-			
+
 			oscillator.type = 'sine';
 			oscillator.frequency.value = shotTimerConfig.beepFrequency;
 			gainNode.gain.value = shotTimerConfig.beepVolume;
-			
+
 			oscillator.start(ctx.currentTime);
 			oscillator.stop(ctx.currentTime + 0.1); // 100ms beep
 		} catch (error) {
@@ -1205,16 +1304,17 @@
 	}
 
 	async function startDrill() {
-		
 		// If starting a new session (no reps or session was completed), reset round counter
-		if (shotTimerSession.reps.length === 0 || 
-		    (shotTimerConfig.autoNextRound && currentRound >= shotTimerConfig.roundCount)) {
+		if (
+			shotTimerSession.reps.length === 0 ||
+			(shotTimerConfig.autoNextRound && currentRound >= shotTimerConfig.roundCount)
+		) {
 			currentRound = 0;
 		}
-		
+
 		// Increment round counter
 		currentRound++;
-		
+
 		// Check if we've reached the round limit
 		if (shotTimerConfig.autoNextRound && currentRound > shotTimerConfig.roundCount) {
 			// Session complete
@@ -1223,23 +1323,25 @@
 			shotTimerPhase = 'idle';
 			return;
 		}
-		
+
 		// Reset state
 		shotTimerActive = true;
 		shotTimerPhase = 'waiting';
 		shotTimerStartTime = null;
 		shotTimerFirstHitTime = null;
 		waitingForClear = false;
-		
+
 		// Calculate random delay
 		const delayRange = shotTimerConfig.randomDelayMax - shotTimerConfig.randomDelayMin;
-		const delay = shotTimerConfig.randomDelayMin + (Math.random() * delayRange);
-		
-		console.log(`Round ${currentRound}/${shotTimerConfig.roundCount} - Random delay: ${(delay / 1000).toFixed(2)}s`);
-		
+		const delay = shotTimerConfig.randomDelayMin + Math.random() * delayRange;
+
+		console.log(
+			`Round ${currentRound}/${shotTimerConfig.roundCount} - Random delay: ${(delay / 1000).toFixed(2)}s`
+		);
+
 		if (shotTimerConfig.drillType === 'callout') {
 			if (targets.length < 1) {
-				alert("You need at least one target for Call-Out drills.");
+				alert('You need at least one target for Call-Out drills.');
 				cancelDrill();
 				return;
 			}
@@ -1249,11 +1351,11 @@
 			tempDrillData = { callOutTargetId: target.id, callOutTargetName: target.name };
 
 			// Sequence: Shooter Ready -> Standby -> [Target Name]
-			speak("Shooter Ready", () => {
+			speak('Shooter Ready', () => {
 				if (!shotTimerActive) return;
 				setTimeout(() => {
 					if (!shotTimerActive) return;
-					speak("Standby", () => {
+					speak('Standby', () => {
 						if (!shotTimerActive) return;
 						setTimeout(() => {
 							if (!shotTimerActive) return;
@@ -1270,14 +1372,14 @@
 			shotTimerDelayTimeout = setTimeout(() => {
 				// Check if drill was cancelled during delay
 				if (!shotTimerActive) return;
-				
+
 				// Play start beep
 				playStartBeep();
-				
+
 				// Mark start time
 				shotTimerStartTime = performance.now();
 				shotTimerPhase = 'active';
-				
+
 				console.log('Timer started - waiting for first hit');
 			}, delay);
 		}
@@ -1328,7 +1430,7 @@
 			if (shotTimerConfig.malfunctionMode && !waitingForClear) {
 				// Prevent more than 2 malfunctions in a row
 				const forceSafe = consecutiveMalfunctions >= 2;
-				
+
 				if (!forceSafe && Math.random() < shotTimerConfig.malfunctionProbability) {
 					playClickSound();
 					waitingForClear = true;
@@ -1345,7 +1447,7 @@
 			// Record hit time
 			shotTimerFirstHitTime = performance.now() - shotTimerStartTime;
 			shotTimerPhase = 'complete';
-			
+
 			// Store rep result
 			const repResult = {
 				id: `rep_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -1362,22 +1464,22 @@
 				falseStart: false,
 				isMalfunction: isMalfunctionClear
 			};
-			
+
 			shotTimerSession.reps = [...shotTimerSession.reps, repResult];
-			
+
 			console.log(`Draw time: ${(repResult.drawTime / 1000).toFixed(3)}s, Zone: ${hit.zone}`);
-			
+
 			// Set cooldown period (ignore hits for 1 second after timer stops)
 			shotTimerCooldownUntil = performance.now() + 1000;
-			
+
 			// Timer is no longer active (drill complete)
 			shotTimerActive = false;
-			
+
 			handleAutoNext();
-			
+
 			return true; // Hit was consumed by timer
 		}
-		
+
 		return false; // Hit not consumed
 	}
 
@@ -1469,7 +1571,7 @@
 			shotTimerPhase = 'complete';
 
 			const isWrongTarget = hit.targetId !== tempDrillData.callOutTargetId;
-			
+
 			// Store rep result
 			const repResult = {
 				id: `rep_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -1488,15 +1590,17 @@
 				isFailure: isWrongTarget,
 				isMalfunction: false
 			};
-			
+
 			shotTimerSession.reps = [...shotTimerSession.reps, repResult];
-			
-			console.log(`Call-out time: ${(repResult.drawTime / 1000).toFixed(3)}s, Target: ${hit.zone}, Result: ${isWrongTarget ? 'FAIL' : 'PASS'}`);
-			
+
+			console.log(
+				`Call-out time: ${(repResult.drawTime / 1000).toFixed(3)}s, Target: ${hit.zone}, Result: ${isWrongTarget ? 'FAIL' : 'PASS'}`
+			);
+
 			shotTimerCooldownUntil = performance.now() + 1000;
 			shotTimerActive = false;
 			tempDrillData = {};
-			
+
 			handleAutoNext();
 			return true;
 		}
@@ -1560,13 +1664,13 @@
 
 	function exportShotPattern() {
 		if (!browser || !canvasElement || !videoElement) return;
-		
+
 		// Create a clean canvas with just the target and shots
 		const exportCanvas = document.createElement('canvas');
 		exportCanvas.width = videoElement.videoWidth || canvasElement.width;
 		exportCanvas.height = videoElement.videoHeight || canvasElement.height;
 		const ctx = exportCanvas.getContext('2d');
-		
+
 		// Draw current video frame as background
 		if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
 			ctx.drawImage(videoElement, 0, 0, exportCanvas.width, exportCanvas.height);
@@ -1575,13 +1679,13 @@
 			ctx.fillStyle = '#000000';
 			ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
 		}
-		
+
 		// Draw target overlay if calibrated
 		if (targetBoundary) {
 			const bbox = getTargetBoundingBox(targetBoundary);
 			const targetWidth = bbox.maxX - bbox.minX;
 			const targetHeight = bbox.maxY - bbox.minY;
-			
+
 			// Draw zones
 			if (targetMode === 'preloaded' && templates[selectedTemplate]?.zones) {
 				const template = templates[selectedTemplate];
@@ -1593,19 +1697,19 @@
 						width: targetWidth * (zone.normalized.maxX - zone.normalized.minX),
 						height: targetHeight * (zone.normalized.maxY - zone.normalized.minY)
 					};
-					
+
 					function hexToRgba(hex, opacity) {
 						const r = parseInt(hex.slice(1, 3), 16);
 						const g = parseInt(hex.slice(3, 5), 16);
 						const b = parseInt(hex.slice(5, 7), 16);
 						return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 					}
-					
+
 					ctx.fillStyle = hexToRgba(zone.color, 0.2);
 					ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
 				}
 			}
-			
+
 			// Draw target boundary outline
 			ctx.strokeStyle = '#00ff00';
 			ctx.lineWidth = 2;
@@ -1619,13 +1723,13 @@
 			ctx.stroke();
 			ctx.setLineDash([]);
 		}
-		
+
 		// Draw sequence lines
 		drawSequenceLines(ctx, hits);
-		
+
 		// Draw hit markers
-		hits.forEach(hit => drawHitMarker(ctx, hit));
-		
+		hits.forEach((hit) => drawHitMarker(ctx, hit));
+
 		// Add session info overlay
 		ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
 		ctx.fillRect(10, 10, 250, 100);
@@ -1633,13 +1737,13 @@
 		ctx.font = 'bold 16px sans-serif';
 		ctx.fillText(`Shots: ${hits.length}`, 20, 35);
 		ctx.fillText(`Date: ${new Date().toLocaleDateString()}`, 20, 60);
-		
+
 		if (targetMode === 'preloaded') {
 			ctx.fillText(`Target: ${templates[selectedTemplate]?.name || 'Unknown'}`, 20, 85);
 		}
-		
+
 		// Download as PNG
-		exportCanvas.toBlob(blob => {
+		exportCanvas.toBlob((blob) => {
 			const url = URL.createObjectURL(blob);
 			const a = document.createElement('a');
 			a.href = url;
@@ -1655,13 +1759,14 @@
 		if (!isSetupComplete) {
 			// Phase 1: Setup
 			driverObj.setSteps([
-				{ 
-					element: '#setup-container', 
-					popover: { 
-						title: 'Welcome to Dry-Fire Trainer', 
-						description: 'Let\'s get your range set up. Select your target mode above, then click Continue to start the camera.',
+				{
+					element: '#setup-container',
+					popover: {
+						title: 'Welcome to Dry-Fire Trainer',
+						description:
+							"Let's get your range set up. Select your target mode above, then click Continue to start the camera.",
 						showButtons: [] // Hide buttons to force interaction with the UI
-					} 
+					}
 				}
 			]);
 			driverObj.drive();
@@ -1675,20 +1780,22 @@
 		// Wait for DOM to update
 		setTimeout(() => {
 			if (!driverObj) driverObj = driver(driverConfig);
-			
+
 			driverObj.setSteps([
 				{
 					element: '#btn-calibrate',
 					popover: {
 						title: 'Calibrate Target',
-						description: 'Click here to define your target area. You will tap the 4 corners of your target.'
+						description:
+							'Click here to define your target area. You will tap the 4 corners of your target.'
 					}
 				},
 				{
 					element: '#btn-set-background',
 					popover: {
 						title: 'Environmental Nulling',
-						description: 'If you have false positives from lights or reflections, use this to ignore the static background.'
+						description:
+							'If you have false positives from lights or reflections, use this to ignore the static background.'
 					}
 				},
 				{
@@ -1702,16 +1809,16 @@
 			driverObj.drive();
 		}, 500);
 	}
-		function loadSettings() {
+	function loadSettings() {
 		if (!browser) return;
-		
+
 		try {
 			const savedConfig = localStorage.getItem('shotTimerConfig');
 			if (savedConfig) shotTimerConfig = { ...shotTimerConfig, ...JSON.parse(savedConfig) };
-			
+
 			const savedVis = localStorage.getItem('visualizationState');
 			if (savedVis) visualizationState = { ...visualizationState, ...JSON.parse(savedVis) };
-			
+
 			const savedSession = localStorage.getItem('shotTimerSession');
 			if (savedSession) {
 				const session = JSON.parse(savedSession);
@@ -1730,7 +1837,9 @@
 
 	function resetApp() {
 		if (!browser) return;
-		if (confirm('Reset all settings and data? This will clear your current session and preferences.')) {
+		if (
+			confirm('Reset all settings and data? This will clear your current session and preferences.')
+		) {
 			localStorage.clear();
 			location.reload();
 		}
@@ -1746,13 +1855,21 @@
 
 	onMount(() => {
 		// Don't auto-start camera - let user start it manually
-		
+
 		// Listen for fullscreen changes (only in browser)
 		if (browser) {
 			document.addEventListener('fullscreenchange', handleFullscreenChange);
 			document.addEventListener('webkitfullscreenchange', handleFullscreenChange); // Safari
 			document.addEventListener('mozfullscreenchange', handleFullscreenChange); // Firefox
+			document.addEventListener('mozfullscreenchange', handleFullscreenChange); // Firefox
 			document.addEventListener('MSFullscreenChange', handleFullscreenChange); // IE/Edge
+
+			// Re-acquire wake lock when returning to tab if streaming
+			document.addEventListener('visibilitychange', () => {
+				if (document.visibilityState === 'visible' && isStreaming) {
+					requestWakeLock();
+				}
+			});
 		}
 
 		// Check for first-time user
@@ -1768,7 +1885,8 @@
 
 	onDestroy(() => {
 		stopCamera();
-		
+		releaseWakeLock();
+
 		// Remove fullscreen listeners (only in browser)
 		if (browser) {
 			document.removeEventListener('fullscreenchange', handleFullscreenChange);
@@ -1783,75 +1901,105 @@
 	<title>Dry-Fire Trainer</title>
 </svelte:head>
 
-<div class="min-h-screen bg-background text-foreground flex flex-col">
+<div class="flex min-h-screen flex-col bg-background text-foreground">
 	<!-- Header -->
 	<Header on:help={startOnboarding} />
 
-	<main class="flex-1 flex flex-col p-4 pb-36 space-y-4 max-w-7xl mx-auto w-full">
+	<main class="mx-auto flex w-full max-w-7xl flex-1 flex-col space-y-4 p-4 pb-36">
 		{#if !isSetupComplete}
 			<!-- Setup Mode -->
-			<div class="space-y-4 animate-fade-in" id="setup-container">
+			<div class="animate-fade-in space-y-4" id="setup-container">
 				<!-- Target Mode Selector -->
 				<TargetSetup
 					bind:targetMode
 					bind:selectedTemplate
 					{isStreaming}
 					on:complete={async () => {
-							isSetupComplete = true;
-							showTargetModeSelection = false;
-							// Start camera if not already streaming
-							if (!isStreaming) {
-								await startCamera();
-							}
-							// Auto-start calibration if needed (unless freeform mode)
-							if (isStreaming && !targetBoundary && targetMode !== 'freeform') {
-								startCalibration();
-							}
-							// Continue onboarding if active
-							if (driverObj && driverObj.isActive()) {
-								driverObj.destroy(); // Close current step
-								startActiveOnboarding(); // Start next phase
-							}
-						}}
+						isSetupComplete = true;
+						showTargetModeSelection = false;
+						// Start camera if not already streaming
+						if (!isStreaming) {
+							await startCamera();
+						}
+						// Auto-start calibration if needed (unless freeform mode)
+						if (isStreaming && !targetBoundary && targetMode !== 'freeform') {
+							startCalibration();
+						}
+						// Continue onboarding if active
+						if (driverObj && driverObj.isActive()) {
+							driverObj.destroy(); // Close current step
+							startActiveOnboarding(); // Start next phase
+						}
+					}}
 				/>
 
 				<!-- Camera Preview (Setup Mode) -->
-				<div class="relative w-full bg-card rounded-xl overflow-hidden border border-border aspect-[4/3]">
-					<div class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-card via-background to-card">
+				<div
+					class="relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-border bg-card"
+				>
+					<div
+						class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-card via-background to-card"
+					>
 						{#if !isStreaming}
-							<div class="text-center space-y-4 p-8">
-								<div class="w-16 h-16 mx-auto rounded-full bg-secondary/50 flex items-center justify-center border-2 border-dashed border-muted-foreground/30">
-									<svg class="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+							<div class="space-y-4 p-8 text-center">
+								<div
+									class="mx-auto flex h-16 w-16 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground/30 bg-secondary/50"
+								>
+									<svg
+										class="h-8 w-8 text-muted-foreground"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+										/>
 									</svg>
 								</div>
 								<div>
-									<p class="text-muted-foreground text-sm font-medium">Camera inactive</p>
-									<p class="text-muted-foreground/60 text-xs mt-1">Tap Start to begin</p>
+									<p class="text-sm font-medium text-muted-foreground">Camera inactive</p>
+									<p class="mt-1 text-xs text-muted-foreground/60">Tap Start to begin</p>
 								</div>
 								<button
 									onclick={startCamera}
-									class="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-2 rounded-lg font-medium text-sm flex items-center gap-2 mx-auto"
+									class="mx-auto mt-4 flex items-center gap-2 rounded-lg bg-primary px-6 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
 								>
-									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+									<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+										/>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+										/>
 									</svg>
 									Start
 								</button>
 							</div>
 						{:else}
 							<div class="absolute inset-0 flex items-center justify-center">
-								<div class="text-center space-y-3">
+								<div class="space-y-3 text-center">
 									<div class="relative">
-										<div class="w-20 h-20 mx-auto rounded-full bg-primary/20 flex items-center justify-center border-2 border-primary/30">
-											<div class="w-3 h-3 rounded-full bg-primary pulse-active"></div>
+										<div
+											class="mx-auto flex h-20 w-20 items-center justify-center rounded-full border-2 border-primary/30 bg-primary/20"
+										>
+											<div class="pulse-active h-3 w-3 rounded-full bg-primary"></div>
 										</div>
 										<div class="absolute inset-0 flex items-center justify-center">
-											<div class="w-12 h-12 rounded-full border-2 border-primary/20 pulse-active"></div>
+											<div
+												class="pulse-active h-12 w-12 rounded-full border-2 border-primary/20"
+											></div>
 										</div>
 									</div>
-									<p class="text-muted-foreground text-sm font-medium">Camera feed active</p>
+									<p class="text-sm font-medium text-muted-foreground">Camera feed active</p>
 								</div>
 							</div>
 						{/if}
@@ -1860,7 +2008,7 @@
 			</div>
 		{:else}
 			<!-- Active Training Mode -->
-			<div class="space-y-4 animate-fade-in">
+			<div class="animate-fade-in space-y-4">
 				<CameraStage
 					bind:videoElement
 					bind:canvasElement
@@ -1874,7 +2022,11 @@
 					{zones}
 					{targets}
 					{waitingForClear}
-					callOutTarget={shotTimerActive && shotTimerConfig.drillType === 'callout' && shotTimerPhase === 'active' ? tempDrillData.callOutTargetName : null}
+					callOutTarget={shotTimerActive &&
+					shotTimerConfig.drillType === 'callout' &&
+					shotTimerPhase === 'active'
+						? tempDrillData.callOutTargetName
+						: null}
 					hasBackground={!!backgroundSnapshot}
 					bind:isFullscreen
 					on:canvasClick={handleCanvasClick}
@@ -1891,7 +2043,7 @@
 						}
 					}}
 				/>
-	
+
 				<!-- Status Pills -->
 				<div class="flex flex-wrap items-center justify-center gap-2">
 					<StatusPills {isStreaming} {hits} {targets} {backgroundSnapshot} />
@@ -1899,8 +2051,8 @@
 
 				<!-- Hits List -->
 				<HitsList {hits} />
-					</div>
-				{/if}
+			</div>
+		{/if}
 	</main>
 
 	<!-- Bottom Action Bar -->
@@ -1918,13 +2070,13 @@
 			bind:zones
 			bind:shotTimerConfig
 			bind:visualizationState
-			shotTimerActive={shotTimerActive}
-			shotTimerPhase={shotTimerPhase}
-			shotTimerSession={shotTimerSession}
-			currentRound={currentRound}
-			autoNextCountdown={autoNextCountdown}
-			shotTimerStartTime={shotTimerStartTime}
-			timerDisplayUpdate={timerDisplayUpdate}
+			{shotTimerActive}
+			{shotTimerPhase}
+			{shotTimerSession}
+			{currentRound}
+			{autoNextCountdown}
+			{shotTimerStartTime}
+			{timerDisplayUpdate}
 			on:startCalibration={startCalibration}
 			on:clearCalibration={clearCalibration}
 			on:removeTarget={(e) => removeTarget(e.detail)}
@@ -1946,9 +2098,11 @@
 	{/if}
 
 	<!-- Zone Settings Panel - Desktop (side panel) -->
-				{#if showZoneSettings}
-		<div class="hidden md:block fixed top-0 right-0 h-full w-96 bg-card border-l border-border z-50 shadow-2xl overflow-y-auto">
-			<div class="p-6 h-full">
+	{#if showZoneSettings}
+		<div
+			class="fixed top-0 right-0 z-[60] hidden h-full w-96 overflow-y-auto border-l border-border bg-card shadow-2xl md:block"
+		>
+			<div class="h-full p-6">
 				<ZoneSettingsPanel
 					bind:zones
 					mobile={false}
@@ -1958,11 +2112,14 @@
 			</div>
 		</div>
 	{/if}
-							
+
 	<!-- Shot Timer Panel - Desktop (side panel) -->
 	{#if showDrills}
-		<div class="hidden md:block fixed top-0 h-full w-96 bg-card border-l border-border z-50 shadow-2xl overflow-y-auto" style="right: {showZoneSettings ? '384px' : '0'}">
-			<div class="p-6 h-full">
+		<div
+			class="fixed top-0 z-50 hidden h-full w-96 overflow-y-auto border-l border-border bg-card shadow-2xl md:block"
+			style="right: {showZoneSettings ? '384px' : '0'}"
+		>
+			<div class="h-full p-6">
 				<DrillsPanel
 					mobile={false}
 					active={shotTimerActive}
@@ -1988,8 +2145,11 @@
 
 	<!-- Shot Sequence Visualization Panel - Desktop (side panel) -->
 	{#if showVisualizationControls}
-		<div class="hidden md:block fixed top-0 h-full w-96 bg-card border-l border-border z-50 shadow-2xl overflow-y-auto" style="right: {(showZoneSettings ? 384 : 0) + (showDrills ? 384 : 0)}px">
-			<div class="p-6 h-full">
+		<div
+			class="fixed top-0 z-50 hidden h-full w-96 overflow-y-auto border-l border-border bg-card shadow-2xl md:block"
+			style="right: {(showZoneSettings ? 384 : 0) + (showDrills ? 384 : 0)}px"
+		>
+			<div class="h-full p-6">
 				<VisualizationPanel
 					mobile={false}
 					bind:visualizationState
@@ -2009,14 +2169,14 @@
 		height: 100%;
 		position: relative;
 	}
-	
+
 	.camera-feed video,
 	.camera-feed canvas {
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
 	}
-	
+
 	/* Status Badges */
 	.status-badge {
 		display: inline-block;
@@ -2028,39 +2188,44 @@
 		color: white;
 		backdrop-filter: blur(10px);
 	}
-	
+
 	.status-badge.success {
 		background: rgba(34, 197, 94, 0.9);
 	}
-	
+
 	.status-badge.warning {
 		background: rgba(251, 191, 36, 0.9);
 	}
-	
+
 	.status-badge.active {
 		background: rgba(59, 130, 246, 0.9);
 		animation: pulse 2s ease-in-out infinite;
 	}
-	
+
 	.status-badge.info {
 		background: rgba(99, 102, 241, 0.9);
 	}
-	
+
 	.status-badge.zoom-reset {
 		background: rgba(139, 92, 246, 0.9);
 		cursor: pointer;
 		pointer-events: auto;
 	}
-	
+
 	.status-badge.zoom-reset:active {
 		transform: scale(0.95);
 	}
-	
+
 	@keyframes pulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.7; }
+		0%,
+		100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.7;
+		}
 	}
-	
+
 	/* Floating Action Buttons */
 	.fab {
 		width: 56px;
@@ -2070,26 +2235,28 @@
 		font-size: 24px;
 		cursor: pointer;
 		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-		transition: transform 0.2s, box-shadow 0.2s;
+		transition:
+			transform 0.2s,
+			box-shadow 0.2s;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 	}
-	
+
 	.fab:active {
 		transform: scale(0.95);
 	}
-	
+
 	.fab.primary {
 		background: #3b82f6;
 		color: white;
 	}
-	
+
 	.fab.secondary {
 		background: #8b5cf6;
 		color: white;
 	}
-	
+
 	/* Quick Actions Grid */
 	.quick-actions-grid {
 		display: grid;
@@ -2097,7 +2264,7 @@
 		gap: 12px;
 		margin-bottom: 16px;
 	}
-	
+
 	.action-btn {
 		padding: 16px;
 		border: none;
@@ -2105,75 +2272,77 @@
 		font-size: 14px;
 		font-weight: 600;
 		cursor: pointer;
-		transition: transform 0.1s, opacity 0.2s;
+		transition:
+			transform 0.1s,
+			opacity 0.2s;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		gap: 4px;
 	}
-	
+
 	.action-btn:active {
 		transform: scale(0.98);
 	}
-	
+
 	.action-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
-	
+
 	.action-btn.primary {
 		background: #3b82f6;
 		color: white;
 	}
-	
+
 	.action-btn.secondary {
 		background: #64748b;
 		color: white;
 	}
-	
+
 	.action-btn.success {
 		background: #22c55e;
 		color: white;
 	}
-	
+
 	.action-btn.info {
 		background: #8b5cf6;
 		color: white;
 	}
-	
+
 	.action-btn.warning {
 		background: #f59e0b;
 		color: white;
 	}
-	
+
 	.action-btn.danger {
 		background: #ef4444;
 		color: white;
 	}
-	
+
 	/* Full Controls Container */
 	.full-controls-container {
 		display: flex;
 		flex-direction: column;
 		gap: 24px;
 	}
-	
+
 	.mobile-tablet-only {
 		display: block;
 	}
-	
+
 	@media (min-width: 1024px) {
 		.mobile-tablet-only {
 			display: none;
 		}
 	}
-	
+
 	/* Ensure desktop layout has proper styling */
 	:global(.desktop-layout) {
 		background: #0f172a;
 		min-height: 100vh;
 	}
-	
+
 	:global(.desktop-layout) .min-h-screen {
 		min-height: auto;
 	}

@@ -16,7 +16,15 @@ export const MIN_LASER_SIZE = 2; // Require at least 2 pixels to reduce noise
 export const MIN_COLOR_DOMINANCE = 30; // Minimum difference between dominant color and other channels
 export const MIN_BRIGHTNESS = 100; // Minimum total brightness (r+g+b) to avoid dim false positives
 
-export function detectLaserDots(pixels, width, height, debugMode = false, backgroundSnapshot = null, backgroundThreshold = 100, roi = null) {
+export function detectLaserDots(
+	pixels,
+	width,
+	height,
+	debugMode = false,
+	backgroundSnapshot = null,
+	backgroundThreshold = 100,
+	roi = null
+) {
 	const hits = [];
 	const visited = new Set();
 	const debugPixels = debugMode ? [] : null; // Store pixels that match criteria for debug overlay
@@ -58,7 +66,16 @@ export function detectLaserDots(pixels, width, height, debugMode = false, backgr
 			// Require strict threshold match OR (dominant with significant difference)
 			if (redMatch || (redDominant && redDominanceDiff >= MIN_COLOR_DOMINANCE)) {
 				if (debugMode && debugPixels) {
-					debugPixels.push({ x, y, r, g, b, color: 'red', matched: redMatch, dominant: redDominant });
+					debugPixels.push({
+						x,
+						y,
+						r,
+						g,
+						b,
+						color: 'red',
+						matched: redMatch,
+						dominant: redDominant
+					});
 				}
 				const cluster = findCluster(x, y, pixels, width, height, 'red', visited);
 				if (cluster && cluster.size >= MIN_LASER_SIZE) {

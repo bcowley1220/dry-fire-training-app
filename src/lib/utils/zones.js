@@ -120,7 +120,7 @@ export const templates = {
 				normalized: { minX: 0.7, maxX: 1, minY: 0.3, maxY: 0.6 },
 				color: '#f59e0b',
 				label: 'THUMBING'
-			},
+			}
 			// ... other diagnostic zones omitted for brevity but logic remains ...
 		]
 	}
