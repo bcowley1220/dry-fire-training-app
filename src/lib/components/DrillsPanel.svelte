@@ -71,7 +71,7 @@
 		reps.forEach((rep) => {
 			// Handle multiple hits for reload drill
 			const hits = rep.hits || [rep.hit];
-			hits.forEach(hit => {
+			hits.forEach((hit) => {
 				const zone = hit.zone;
 				if (!zoneCounts[zone]) {
 					zoneCounts[zone] = {
@@ -115,15 +115,15 @@
 	}
 </script>
 
-<div class="bg-secondary/50 rounded-lg p-4 mb-4 h-full overflow-y-auto">
-	<div class="flex items-center justify-between mb-4">
+<div class="mb-4 h-full overflow-y-auto rounded-lg bg-secondary/50 p-4">
+	<div class="mb-4 flex items-center justify-between">
 		<h3 class="text-lg font-semibold">{showStats ? 'Session Stats' : 'Drills'}</h3>
 		<button
 			on:click={close}
-			class="bg-secondary hover:bg-secondary/80 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+			class="rounded-lg bg-secondary px-3 py-1.5 text-sm font-semibold transition-colors hover:bg-secondary/80"
 			aria-label="Close drills panel"
 		>
-			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path
 					stroke-linecap="round"
 					stroke-linejoin="round"
@@ -138,23 +138,23 @@
 		<!-- Session Statistics View -->
 		<div class="space-y-6">
 			<div class="grid grid-cols-2 gap-4">
-				<div class="bg-background/50 rounded-lg p-4 text-center">
-					<div class="text-sm text-muted-foreground mb-1">Reps</div>
-					<div class="text-2xl font-bold font-mono">{session.reps.length}</div>
+				<div class="rounded-lg bg-background/50 p-4 text-center">
+					<div class="mb-1 text-sm text-muted-foreground">Reps</div>
+					<div class="font-mono text-2xl font-bold">{session.reps.length}</div>
 				</div>
-				<div class="bg-background/50 rounded-lg p-4 text-center">
-					<div class="text-sm text-muted-foreground mb-1">Average</div>
-					<div class="text-2xl font-bold font-mono">{formatTime(calculateAverage())}s</div>
+				<div class="rounded-lg bg-background/50 p-4 text-center">
+					<div class="mb-1 text-sm text-muted-foreground">Average</div>
+					<div class="font-mono text-2xl font-bold">{formatTime(calculateAverage())}s</div>
 				</div>
-				<div class="bg-background/50 rounded-lg p-4 text-center">
-					<div class="text-sm text-muted-foreground mb-1">Best</div>
-					<div class="text-2xl font-bold font-mono text-success">
+				<div class="rounded-lg bg-background/50 p-4 text-center">
+					<div class="mb-1 text-sm text-muted-foreground">Best</div>
+					<div class="font-mono text-2xl font-bold text-success">
 						{formatTime(calculateBest())}s
 					</div>
 				</div>
-				<div class="bg-background/50 rounded-lg p-4 text-center">
-					<div class="text-sm text-muted-foreground mb-1">Worst</div>
-					<div class="text-2xl font-bold font-mono text-destructive">
+				<div class="rounded-lg bg-background/50 p-4 text-center">
+					<div class="mb-1 text-sm text-muted-foreground">Worst</div>
+					<div class="font-mono text-2xl font-bold text-destructive">
 						{formatTime(calculateWorst())}s
 					</div>
 				</div>
@@ -162,10 +162,10 @@
 
 			{#if calculateAccuracyByZone().length > 0}
 				<div>
-					<h5 class="text-md font-semibold mb-3">Accuracy</h5>
+					<h5 class="text-md mb-3 font-semibold">Accuracy</h5>
 					<div class="space-y-2">
 						{#each calculateAccuracyByZone() as zone}
-							<div class="flex justify-between items-center py-2 border-b border-border">
+							<div class="flex items-center justify-between border-b border-border py-2">
 								<span style="color: {zone.color}; font-weight: 600;">{zone.name}</span>
 								<span class="text-foreground">
 									{zone.count}/{session.reps.length} ({zone.percentage}%)
@@ -177,34 +177,43 @@
 			{/if}
 
 			<div>
-				<h5 class="text-md font-semibold mb-3">Individual Reps</h5>
-				<div class="space-y-2 max-h-48 overflow-y-auto">
+				<h5 class="text-md mb-3 font-semibold">Individual Reps</h5>
+				<div class="max-h-48 space-y-2 overflow-y-auto">
 					{#each session.reps as rep, index}
 						<div
-							class="flex justify-between items-center py-2 px-3 bg-background/50 rounded text-sm"
+							class="flex items-center justify-between rounded bg-background/50 px-3 py-2 text-sm"
 						>
 							<div class="flex items-center gap-3">
 								<span class="text-muted-foreground">#{index + 1}</span>
 								<span class="font-mono">{formatTime(getRepTime(rep))}s</span>
 								{#if rep.drillType === 'reload'}
-									<span class="text-xs text-muted-foreground">({formatTime(rep.drawTime)} / {formatTime(rep.reloadTime)})</span>
+									<span class="text-xs text-muted-foreground"
+										>({formatTime(rep.drawTime)} / {formatTime(rep.reloadTime)})</span
+									>
 								{/if}
 								{#if rep.drillType === 'callout'}
 									<span class="text-xs text-muted-foreground">({rep.calledTarget})</span>
 								{/if}
 								{#if rep.isMalfunction}
-									<span class="text-[10px] bg-destructive/20 text-destructive px-1.5 py-0.5 rounded border border-destructive/30 font-bold tracking-wider">MALF</span>
+									<span
+										class="rounded border border-destructive/30 bg-destructive/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-destructive"
+										>MALF</span
+									>
 								{/if}
 							</div>
 							<div class="flex items-center gap-2">
 								{#if rep.drillType === 'reload' && rep.hits}
 									{#each rep.hits as hit}
-										<span style="color: {hit.zoneColor}; font-weight: 600; font-size: 0.75rem;">{hit.zone}</span>
+										<span style="color: {hit.zoneColor}; font-weight: 600; font-size: 0.75rem;"
+											>{hit.zone}</span
+										>
 									{/each}
 								{:else}
 									<span style="color: {rep.hit.zoneColor}; font-weight: 600;">{rep.hit.zone}</span>
 									{#if rep.isFailure}
-										<span class="text-destructive font-bold">{rep.drillType === 'callout' ? 'WRONG TGT' : 'FAIL'}</span>
+										<span class="font-bold text-destructive"
+											>{rep.drillType === 'callout' ? 'WRONG TGT' : 'FAIL'}</span
+										>
 									{:else if rep.hit.points !== null}
 										<span class="text-muted-foreground">+{rep.hit.points}</span>
 									{/if}
@@ -221,13 +230,13 @@
 						showStats = false;
 						start();
 					}}
-					class="flex-1 bg-primary hover:bg-primary/90 px-6 py-3 rounded-lg font-semibold transition-colors"
+					class="flex-1 rounded-lg bg-primary px-6 py-3 font-semibold transition-colors hover:bg-primary/90"
 				>
 					Continue
 				</button>
 				<button
 					on:click={endSession}
-					class="flex-1 bg-secondary hover:bg-secondary/80 px-6 py-3 rounded-lg font-semibold transition-colors"
+					class="flex-1 rounded-lg bg-secondary px-6 py-3 font-semibold transition-colors hover:bg-secondary/80"
 				>
 					End Session
 				</button>
@@ -237,11 +246,14 @@
 		<!-- Configuration View -->
 		<div class="space-y-4">
 			<div>
-				<label for="drill-type-{mobile ? 'mobile' : 'desktop'}" class="block text-sm text-muted-foreground mb-2">Drill Type</label>
+				<label
+					for="drill-type-{mobile ? 'mobile' : 'desktop'}"
+					class="mb-2 block text-sm text-muted-foreground">Drill Type</label
+				>
 				<select
 					id="drill-type-{mobile ? 'mobile' : 'desktop'}"
 					bind:value={config.drillType}
-					class="w-full bg-background border border-border rounded px-3 py-2 text-foreground"
+					class="w-full rounded border border-border bg-background px-3 py-2 text-foreground"
 				>
 					<option value="draw">Draw Speed</option>
 					<option value="reload">Magazine Reload</option>
@@ -250,7 +262,7 @@
 			</div>
 
 			<div>
-				<div class="block text-sm text-muted-foreground mb-2">Random Delay (seconds):</div>
+				<div class="mb-2 block text-sm text-muted-foreground">Random Delay (seconds):</div>
 				<div class="flex items-center gap-3">
 					<input
 						type="number"
@@ -263,7 +275,7 @@
 								config.randomDelayMin = val;
 							}
 						}}
-						class="w-20 bg-background border border-border rounded px-3 py-2 text-foreground"
+						class="w-20 rounded border border-border bg-background px-3 py-2 text-foreground"
 					/>
 					<span class="text-muted-foreground">to</span>
 					<input
@@ -277,13 +289,16 @@
 								config.randomDelayMax = val;
 							}
 						}}
-						class="w-20 bg-background border border-border rounded px-3 py-2 text-foreground"
+						class="w-20 rounded border border-border bg-background px-3 py-2 text-foreground"
 					/>
 				</div>
 			</div>
 
 			<div>
-				<label for="beep-volume-{mobile ? 'mobile' : 'desktop'}" class="block text-sm text-muted-foreground mb-2">
+				<label
+					for="beep-volume-{mobile ? 'mobile' : 'desktop'}"
+					class="mb-2 block text-sm text-muted-foreground"
+				>
 					Beep Volume: {Math.round(config.beepVolume * 100)}%
 				</label>
 				<input
@@ -297,16 +312,16 @@
 				/>
 			</div>
 
-			<div class="border-t border-border pt-4 mt-4">
-				<div class="flex items-center gap-3 mb-4">
-					<input type="checkbox" bind:checked={config.autoNextRound} class="w-5 h-5" />
+			<div class="mt-4 border-t border-border pt-4">
+				<div class="mb-4 flex items-center gap-3">
+					<input type="checkbox" bind:checked={config.autoNextRound} class="h-5 w-5" />
 					<label class="text-sm font-semibold"> Enable Automatic Next Round </label>
 				</div>
 
 				{#if config.autoNextRound}
-					<div class="space-y-3 ml-8">
+					<div class="ml-8 space-y-3">
 						<div>
-							<label class="block text-sm text-muted-foreground mb-2">
+							<label class="mb-2 block text-sm text-muted-foreground">
 								Number of Rounds: {config.roundCount}
 							</label>
 							<input
@@ -314,11 +329,11 @@
 								min="1"
 								max="100"
 								bind:value={config.roundCount}
-								class="w-full bg-background border border-border rounded px-3 py-2 text-foreground"
+								class="w-full rounded border border-border bg-background px-3 py-2 text-foreground"
 							/>
 						</div>
 						<div>
-							<label class="block text-sm text-muted-foreground mb-2">
+							<label class="mb-2 block text-sm text-muted-foreground">
 								Reset Duration: {(config.resetDuration / 1000).toFixed(1)}s
 							</label>
 							<input
@@ -335,32 +350,43 @@
 				{/if}
 			</div>
 
-			<div class="border-t border-border pt-4 mt-4">
-				<div class="flex items-center gap-3 mb-2">
-					<input type="checkbox" id="malfunction-mode-{mobile ? 'mobile' : 'desktop'}" bind:checked={config.malfunctionMode} class="w-5 h-5" />
-					<label for="malfunction-mode-{mobile ? 'mobile' : 'desktop'}" class="text-sm font-semibold"> Random Malfunctions (Striker Mode) </label>
+			<div class="mt-4 border-t border-border pt-4">
+				<div class="mb-2 flex items-center gap-3">
+					<input
+						type="checkbox"
+						id="malfunction-mode-{mobile ? 'mobile' : 'desktop'}"
+						bind:checked={config.malfunctionMode}
+						class="h-5 w-5"
+					/>
+					<label
+						for="malfunction-mode-{mobile ? 'mobile' : 'desktop'}"
+						class="text-sm font-semibold"
+					>
+						Random Malfunctions (Striker Mode)
+					</label>
 				</div>
-				<p class="text-xs text-muted-foreground ml-8 mb-4">
-					Randomly simulates a dead trigger (10% chance). You must rack the slide and fire again to stop the timer.
+				<p class="mb-4 ml-8 text-xs text-muted-foreground">
+					Randomly simulates a dead trigger (10% chance). You must rack the slide and fire again to
+					stop the timer.
 				</p>
 			</div>
 
 			<button
 				on:click={start}
 				disabled={active}
-				class="w-full bg-primary hover:bg-primary/90 disabled:bg-secondary disabled:cursor-not-allowed px-6 py-4 rounded-lg font-semibold text-lg transition-colors"
+				class="w-full rounded-lg bg-primary px-6 py-4 text-lg font-semibold transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-secondary"
 			>
 				I'm Ready - Start Drill
 			</button>
 
 			{#if session.reps.length > 0}
-				<div class="mt-4 pt-4 border-t border-border">
-					<p class="text-sm text-muted-foreground mb-2">
+				<div class="mt-4 border-t border-border pt-4">
+					<p class="mb-2 text-sm text-muted-foreground">
 						Session: {session.reps.length} rep{session.reps.length !== 1 ? 's' : ''} completed
 					</p>
 					<button
 						on:click={() => (showStats = true)}
-						class="w-full bg-secondary hover:bg-secondary/80 px-4 py-2 rounded-lg font-semibold text-sm transition-colors"
+						class="w-full rounded-lg bg-secondary px-4 py-2 text-sm font-semibold transition-colors hover:bg-secondary/80"
 					>
 						View Session Stats
 					</button>
@@ -369,33 +395,41 @@
 		</div>
 	{:else if phase === 'waiting'}
 		<!-- Waiting Phase -->
-		<div class="text-center py-8">
+		<div class="py-8 text-center">
 			{#if config.autoNextRound && currentRound > 0}
-				<div class="text-sm text-muted-foreground mb-2">
+				<div class="mb-2 text-sm text-muted-foreground">
 					Round {currentRound} of {config.roundCount}
 				</div>
 			{/if}
-			<div class="inline-block w-3 h-3 bg-warning rounded-full animate-pulse mb-4"></div>
-			<p class="text-lg font-semibold mb-4">Get ready... Timer will beep soon</p>
+			<div class="mb-4 inline-block h-3 w-3 animate-pulse rounded-full bg-warning"></div>
+			<p class="mb-4 text-lg font-semibold">Get ready... Timer will beep soon</p>
 			<button
 				on:click={cancel}
-				class="bg-destructive hover:bg-destructive/90 px-6 py-2 rounded-lg font-semibold transition-colors"
+				class="rounded-lg bg-destructive px-6 py-2 font-semibold transition-colors hover:bg-destructive/90"
 			>
 				Cancel Drill
 			</button>
 		</div>
 	{:else if phase === 'active' || phase === 'reloading'}
 		<!-- Active Phase -->
-		<div class="text-center py-8 border-2 {phase === 'reloading' ? 'border-warning' : 'border-success'} rounded-lg">
+		<div
+			class="border-2 py-8 text-center {phase === 'reloading'
+				? 'border-warning'
+				: 'border-success'} rounded-lg"
+		>
 			{#if config.autoNextRound && currentRound > 0}
-				<div class="text-sm text-muted-foreground mb-2">
+				<div class="mb-2 text-sm text-muted-foreground">
 					Round {currentRound} of {config.roundCount}
 				</div>
 			{/if}
-			<div class="text-5xl font-bold font-mono {phase === 'reloading' ? 'text-warning' : 'text-success'} mb-4">
+			<div
+				class="font-mono text-5xl font-bold {phase === 'reloading'
+					? 'text-warning'
+					: 'text-success'} mb-4"
+			>
 				{formatTime(getCurrentElapsed())}s
 			</div>
-			<p class="text-xl font-semibold mb-4">
+			<p class="mb-4 text-xl font-semibold">
 				{#if phase === 'reloading'}
 					⚠️ RELOAD! SHOOT AGAIN!
 				{:else}
@@ -404,7 +438,7 @@
 			</p>
 			<button
 				on:click={cancel}
-				class="bg-destructive hover:bg-destructive/90 px-6 py-2 rounded-lg font-semibold transition-colors"
+				class="rounded-lg bg-destructive px-6 py-2 font-semibold transition-colors hover:bg-destructive/90"
 			>
 				Cancel
 			</button>
@@ -414,49 +448,55 @@
 		{@const lastRep = session.reps[session.reps.length - 1]}
 		<div class="space-y-4">
 			{#if config.autoNextRound && currentRound > 0}
-				<div class="text-center mb-2">
+				<div class="mb-2 text-center">
 					<div class="text-sm text-muted-foreground">
 						Round {currentRound} of {config.roundCount}
 					</div>
 					{#if currentRound >= config.roundCount}
-						<div class="text-lg font-semibold text-success mt-2">Session Complete!</div>
+						<div class="mt-2 text-lg font-semibold text-success">Session Complete!</div>
 					{/if}
 				</div>
 			{/if}
-			<div class="text-center py-4">
+			<div class="py-4 text-center">
 				{#if lastRep.drillType === 'reload'}
-					<div class="grid grid-cols-2 gap-4 mb-4">
-						<div class="bg-background/30 p-2 rounded">
+					<div class="mb-4 grid grid-cols-2 gap-4">
+						<div class="rounded bg-background/30 p-2">
 							<div class="text-xs text-muted-foreground">Draw</div>
-							<div class="text-xl font-bold font-mono text-success">
+							<div class="font-mono text-xl font-bold text-success">
 								{formatTime(lastRep.drawTime)}s
 							</div>
 						</div>
-						<div class="bg-background/30 p-2 rounded">
+						<div class="rounded bg-background/30 p-2">
 							<div class="text-xs text-muted-foreground">Reload</div>
-							<div class="text-xl font-bold font-mono text-warning">
+							<div class="font-mono text-xl font-bold text-warning">
 								{formatTime(lastRep.reloadTime)}s
 							</div>
 						</div>
 					</div>
-					<div class="text-sm text-muted-foreground mb-1">Total Time</div>
-					<div class="text-4xl font-bold font-mono text-primary mb-4">
+					<div class="mb-1 text-sm text-muted-foreground">Total Time</div>
+					<div class="mb-4 font-mono text-4xl font-bold text-primary">
 						{formatTime(lastRep.totalTime)}s
 					</div>
-					<div class="flex flex-col gap-2 items-center text-sm">
+					<div class="flex flex-col items-center gap-2 text-sm">
 						{#each lastRep.hits as hit, i}
 							<div class="flex items-center gap-2">
-								<span class="text-muted-foreground uppercase text-xs font-bold">Shot {i + 1}:</span>
+								<span class="text-xs font-bold text-muted-foreground uppercase">Shot {i + 1}:</span>
 								<span style="color: {hit.zoneColor}; font-weight: 600;">{hit.zone}</span>
 								{#if hit.points !== null}
-									<span class="text-warning font-semibold">+{hit.points}</span>
+									<span class="font-semibold text-warning">+{hit.points}</span>
 								{/if}
 							</div>
 						{/each}
 					</div>
 				{:else if lastRep.drillType === 'callout'}
-					<div class="text-sm text-muted-foreground mb-2">Called: <span class="font-bold text-foreground">{lastRep.calledTarget}</span></div>
-					<div class="text-4xl font-bold font-mono {lastRep.isFailure ? 'text-destructive' : 'text-success'} mb-4">
+					<div class="mb-2 text-sm text-muted-foreground">
+						Called: <span class="font-bold text-foreground">{lastRep.calledTarget}</span>
+					</div>
+					<div
+						class="font-mono text-4xl font-bold {lastRep.isFailure
+							? 'text-destructive'
+							: 'text-success'} mb-4"
+					>
 						{formatTime(lastRep.drawTime)}s
 					</div>
 					<div class="flex items-center justify-center gap-4 text-lg">
@@ -464,12 +504,12 @@
 							{lastRep.hit.zone}
 						</span>
 						{#if lastRep.isFailure}
-							<span class="text-destructive font-bold">WRONG TARGET</span>
+							<span class="font-bold text-destructive">WRONG TARGET</span>
 						{/if}
 					</div>
 				{:else}
-					<div class="text-sm text-muted-foreground mb-2">Draw Time:</div>
-					<div class="text-4xl font-bold font-mono text-success mb-4">
+					<div class="mb-2 text-sm text-muted-foreground">Draw Time:</div>
+					<div class="mb-4 font-mono text-4xl font-bold text-success">
 						{formatTime(lastRep.drawTime)}s
 					</div>
 					<div class="flex items-center justify-center gap-4 text-lg">
@@ -477,16 +517,16 @@
 							{lastRep.hit.zone}
 						</span>
 						{#if lastRep.hit.points !== null}
-							<span class="text-warning font-semibold">+{lastRep.hit.points} pts</span>
+							<span class="font-semibold text-warning">+{lastRep.hit.points} pts</span>
 						{/if}
 					</div>
 				{/if}
 			</div>
 
 			{#if config.autoNextRound && currentRound < config.roundCount && autoNextCountdown !== null}
-				<div class="bg-primary/20 border border-primary rounded-lg p-4 text-center">
-					<div class="text-sm text-muted-foreground mb-2">Next round starting in:</div>
-					<div class="text-3xl font-bold font-mono text-primary">
+				<div class="rounded-lg border border-primary bg-primary/20 p-4 text-center">
+					<div class="mb-2 text-sm text-muted-foreground">Next round starting in:</div>
+					<div class="font-mono text-3xl font-bold text-primary">
 						{(autoNextCountdown / 1000).toFixed(1)}s
 					</div>
 				</div>
@@ -496,14 +536,14 @@
 				{#if !config.autoNextRound || currentRound < config.roundCount}
 					<button
 						on:click={next}
-						class="flex-1 bg-primary hover:bg-primary/90 px-6 py-3 rounded-lg font-semibold transition-colors"
+						class="flex-1 rounded-lg bg-primary px-6 py-3 font-semibold transition-colors hover:bg-primary/90"
 					>
 						Next Rep
 					</button>
 				{/if}
 				<button
 					on:click={() => (showStats = true)}
-					class="flex-1 bg-secondary hover:bg-secondary/80 px-6 py-3 rounded-lg font-semibold transition-colors"
+					class="flex-1 rounded-lg bg-secondary px-6 py-3 font-semibold transition-colors hover:bg-secondary/80"
 				>
 					View Stats
 				</button>

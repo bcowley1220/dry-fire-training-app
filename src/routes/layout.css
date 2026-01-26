@@ -3,70 +3,71 @@
 @plugin '@tailwindcss/typography';
 
 @theme {
-  --color-background: #0f172a;
-  --color-foreground: #f1f5f9;
-  --color-card: #1e293b;
-  --color-card-foreground: #f1f5f9;
-  --color-border: #334155;
-  --color-primary: #14b8a6;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #334155;
-  --color-secondary-foreground: #f1f5f9;
-  --color-muted: #475569;
-  --color-muted-foreground: #94a3b8;
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-destructive: #ef4444;
-  --color-accent: #f59e0b;
+	--color-background: #0f172a;
+	--color-foreground: #f1f5f9;
+	--color-card: #1e293b;
+	--color-card-foreground: #f1f5f9;
+	--color-border: #334155;
+	--color-primary: #14b8a6;
+	--color-primary-foreground: #ffffff;
+	--color-secondary: #334155;
+	--color-secondary-foreground: #f1f5f9;
+	--color-muted: #475569;
+	--color-muted-foreground: #94a3b8;
+	--color-success: #22c55e;
+	--color-warning: #f59e0b;
+	--color-destructive: #ef4444;
+	--color-accent: #f59e0b;
 }
 
 * {
-  border-color: var(--color-border);
+	border-color: var(--color-border);
 }
 
 body {
-  background-color: var(--color-background);
-  color: var(--color-foreground);
+	background-color: var(--color-background);
+	color: var(--color-foreground);
 }
 
 /* Glass morphism effect */
 .glass {
-  background: rgba(30, 41, 59, 0.5);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+	background: rgba(30, 41, 59, 0.5);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
 }
 
 /* Pulse animation */
 @keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.5;
+	}
 }
 
 .pulse-active {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+	animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 /* Fade in animation */
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+	from {
+		opacity: 0;
+		transform: translateY(-8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.3s ease-out;
+	animation: fadeIn 0.3s ease-out;
 }
 
 /* Safe area for mobile */
 .safe-area-pb {
-  padding-bottom: env(safe-area-inset-bottom);
+	padding-bottom: env(safe-area-inset-bottom);
 }

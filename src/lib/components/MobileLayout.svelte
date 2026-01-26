@@ -146,39 +146,39 @@
 	}
 </script>
 
-<svelte:window
-	onmousemove={handleMouseMove}
-	onmouseup={handleMouseUp}
-/>
+<svelte:window onmousemove={handleMouseMove} onmouseup={handleMouseUp} />
 
-<div class="layout-container" class:mobile={isMobile} class:tablet={isTablet} class:desktop={isDesktop}>
-	
+<div
+	class="layout-container"
+	class:mobile={isMobile}
+	class:tablet={isTablet}
+	class:desktop={isDesktop}
+>
 	{#if isMobile}
 		<!-- Mobile Layout: Full-screen camera + drawer -->
 		<div class="mobile-layout">
-			
 			<!-- Camera Container -->
 			<div class="camera-container" style="height: {100 - drawerHeight}vh">
 				<slot name="camera" />
-				
+
 				<!-- Status Overlay (always visible) -->
 				<div class="status-overlay">
 					<slot name="status-badges" />
 				</div>
-				
+
 				<!-- Floating Action Buttons (optional) -->
 				<div class="fab-container">
 					<slot name="fabs" />
 				</div>
 			</div>
-			
+
 			<!-- Backdrop (when drawer is full) -->
 			{#if drawerState === 'full'}
 				<div class="drawer-backdrop" onclick={handleBackdropClick}></div>
 			{/if}
-			
+
 			<!-- Bottom Drawer -->
-			<div 
+			<div
 				bind:this={drawerElement}
 				class="bottom-drawer {drawerState}"
 				style="height: {drawerHeight}vh"
@@ -188,7 +188,11 @@
 				onmousedown={handleMouseDown}
 			>
 				<!-- Drag Handle - Always visible, even when closed -->
-				<div class="drawer-handle" onclick={toggleDrawer} style="position: absolute; bottom: 0; left: 0; right: 0; z-index: 101;">
+				<div
+					class="drawer-handle"
+					onclick={toggleDrawer}
+					style="position: absolute; bottom: 0; left: 0; right: 0; z-index: 101;"
+				>
 					<div class="handle-bar"></div>
 					<div class="handle-hint">
 						{#if drawerState === 'closed'}
@@ -200,7 +204,7 @@
 						{/if}
 					</div>
 				</div>
-				
+
 				<!-- Drawer Content -->
 				<div class="drawer-content">
 					{#if drawerState === 'partial'}
@@ -211,7 +215,6 @@
 				</div>
 			</div>
 		</div>
-		
 	{:else if isTablet}
 		<!-- Tablet Layout: Split view -->
 		<div class="tablet-layout">
@@ -222,14 +225,12 @@
 				<slot name="full-controls" />
 			</div>
 		</div>
-		
 	{:else}
 		<!-- Desktop Layout: Keep current design -->
 		<div class="desktop-layout">
 			<slot name="desktop" />
 		</div>
 	{/if}
-	
 </div>
 
 <style>
@@ -240,21 +241,21 @@
 		position: relative;
 		background: #0f172a;
 	}
-	
+
 	/* ===== MOBILE LAYOUT ===== */
 	.mobile-layout {
 		width: 100%;
 		height: 100%;
 		position: relative;
 	}
-	
+
 	.camera-container {
 		width: 100%;
 		position: relative;
 		overflow: hidden;
 		transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 	}
-	
+
 	.status-overlay {
 		position: absolute;
 		top: 20px;
@@ -265,7 +266,7 @@
 		gap: 8px;
 		pointer-events: none;
 	}
-	
+
 	.fab-container {
 		position: absolute;
 		right: 20px;
@@ -276,7 +277,7 @@
 		flex-direction: column;
 		gap: 16px;
 	}
-	
+
 	/* Bottom Drawer */
 	.bottom-drawer {
 		position: fixed;
@@ -292,11 +293,11 @@
 		flex-direction: column;
 		touch-action: pan-y;
 	}
-	
+
 	.bottom-drawer.closed {
 		box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
 	}
-	
+
 	.drawer-backdrop {
 		position: fixed;
 		top: 0;
@@ -307,12 +308,16 @@
 		z-index: 99;
 		animation: fadeIn 0.3s ease;
 	}
-	
+
 	@keyframes fadeIn {
-		from { opacity: 0; }
-		to { opacity: 1; }
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
 	}
-	
+
 	.drawer-handle {
 		width: 100%;
 		min-height: 50px;
@@ -325,7 +330,7 @@
 		padding: 12px 0;
 		touch-action: none;
 	}
-	
+
 	.handle-bar {
 		width: 40px;
 		height: 5px;
@@ -333,12 +338,12 @@
 		border-radius: 3px;
 		margin-bottom: 8px;
 	}
-	
+
 	.handle-hint {
 		font-size: 12px;
 		color: #94a3b8;
 	}
-	
+
 	.drawer-content {
 		flex: 1;
 		overflow-y: auto;
@@ -346,20 +351,20 @@
 		padding: 0 20px 20px;
 		-webkit-overflow-scrolling: touch;
 	}
-	
+
 	/* ===== TABLET LAYOUT ===== */
 	.tablet-layout {
 		display: flex;
 		width: 100%;
 		height: 100%;
 	}
-	
+
 	.camera-section {
 		flex: 0 0 70%;
 		position: relative;
 		overflow: hidden;
 	}
-	
+
 	.controls-sidebar {
 		flex: 0 0 30%;
 		overflow-y: auto;
@@ -367,14 +372,14 @@
 		padding: 20px;
 		border-left: 1px solid #334155;
 	}
-	
+
 	/* ===== DESKTOP LAYOUT ===== */
 	.desktop-layout {
 		width: 100%;
 		height: 100%;
 		overflow-y: auto;
 	}
-	
+
 	/* ===== RESPONSIVE UTILITIES ===== */
 	@media (max-width: 767px) {
 		.tablet-layout,
@@ -382,14 +387,14 @@
 			display: none;
 		}
 	}
-	
+
 	@media (min-width: 768px) and (max-width: 1023px) {
 		.mobile-layout,
 		.desktop-layout {
 			display: none;
 		}
 	}
-	
+
 	@media (min-width: 1024px) {
 		.mobile-layout,
 		.tablet-layout {
@@ -397,4 +402,3 @@
 		}
 	}
 </style>
-
