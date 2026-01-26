@@ -11,6 +11,7 @@
 
 ## Features
 
+[] add GA tag
 [] implement the shooter ready, stand by sequence for all the drills
 [] we might want to add in an initial "the drill will start in X seconds" setting because I have to boogy to get back in position
 [] we need to add the "continue" button as soon as the drill ends. it's good to also have it when we review the outcome of the drill, but sometimes i just want to go again without reviewing it
