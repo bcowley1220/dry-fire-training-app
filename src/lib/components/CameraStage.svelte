@@ -11,6 +11,7 @@
 		isSetupComplete = false,
 		calibrationMode = false,
 		calibrationPoints = [],
+		hasFrozenCalibrationFrame = false,
 		zoneCalibrationMode = null,
 		zoneCalibrationPoints = [],
 		zones = {},
@@ -372,8 +373,36 @@
 			></div>
 		{/if}
 		{#if calibrationMode}
+			<div class="absolute top-3 right-3 z-20 flex flex-wrap justify-end gap-2">
+				{#if hasFrozenCalibrationFrame}
+					<div
+						class="glass flex items-center rounded-lg border border-yellow-400/30 px-3 py-2 text-xs font-semibold text-yellow-300"
+					>
+						Frozen frame
+					</div>
+				{/if}
+				<button
+					on:click={() => dispatch('retakeCalibrationFrame')}
+					class="glass rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-foreground hover:bg-secondary/70"
+				>
+					Retake
+				</button>
+				<button
+					on:click={() => dispatch('undoCalibrationPoint')}
+					disabled={calibrationPoints.length === 0}
+					class="glass rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-foreground hover:bg-secondary/70 disabled:cursor-not-allowed disabled:opacity-50"
+				>
+					Undo
+				</button>
+				<button
+					on:click={() => dispatch('cancelCalibration')}
+					class="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700"
+				>
+					Cancel
+				</button>
+			</div>
 			<div
-				class="absolute bottom-4 left-1/2 w-[75%] -translate-x-1/2 transform rounded bg-yellow-500/50 px-4 py-2 text-center font-semibold text-black backdrop-blur-sm"
+				class="absolute bottom-4 left-1/2 z-20 w-[75%] -translate-x-1/2 transform rounded bg-yellow-500/70 px-4 py-2 text-center font-semibold text-black backdrop-blur-sm"
 			>
 				{#if calibrationPoints.length === 0}
 					Tap corners CLOCKWISE: Start with top-left corner
@@ -384,6 +413,9 @@
 				{:else if calibrationPoints.length === 3}
 					Tap bottom-left corner (clockwise) - last one!
 				{/if}
+				<div class="mt-1 text-xs font-medium">
+					{calibrationPoints.length}/4 points selected
+				</div>
 			</div>
 		{/if}
 		{#if zoneCalibrationMode}
@@ -493,64 +525,66 @@
 			{/if}
 
 			<!-- Top Right Controls -->
-			<div class="absolute top-3 right-3 z-20 flex gap-2">
-				<!-- Background Button -->
-				<button
-					id="btn-set-background"
-					on:click={() => dispatch('toggleBackground')}
-					class="glass rounded-lg border-0 p-2 transition-colors hover:bg-secondary/50 {hasBackground
-						? 'bg-green-400/10 text-green-400'
-						: ''}"
-					aria-label="Set Background"
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-4 w-4"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-						stroke-width="2"
+			{#if !calibrationMode && !zoneCalibrationMode}
+				<div class="absolute top-3 right-3 z-20 flex gap-2">
+					<!-- Background Button -->
+					<button
+						id="btn-set-background"
+						on:click={() => dispatch('toggleBackground')}
+						class="glass rounded-lg border-0 p-2 transition-colors hover:bg-secondary/50 {hasBackground
+							? 'bg-green-400/10 text-green-400'
+							: ''}"
+						aria-label="Set Background"
 					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
-						/>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
-						/>
-					</svg>
-				</button>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							class="h-4 w-4"
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke="currentColor"
+							stroke-width="2"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+							/>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+							/>
+						</svg>
+					</button>
 
-				<!-- Fullscreen Button -->
-				<button
-					on:click={() => dispatch('toggleFullscreen')}
-					class="glass rounded-lg border-0 p-2 transition-colors hover:bg-secondary/50"
-					aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-				>
-					{#if isFullscreen}
-						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M6 18L18 6M6 6l12 12M4 8h4m0 0v4m0-4l5 5m7-5h-4m0 0v4m0-4l-5 5M4 16h4m0 0v4m0-4l5-5m7 5h-4m0 0v4m0-4l-5-5"
-							/>
-						</svg>
-					{:else}
-						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
-							/>
-						</svg>
-					{/if}
-				</button>
-			</div>
+					<!-- Fullscreen Button -->
+					<button
+						on:click={() => dispatch('toggleFullscreen')}
+						class="glass rounded-lg border-0 p-2 transition-colors hover:bg-secondary/50"
+						aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+					>
+						{#if isFullscreen}
+							<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M6 18L18 6M6 6l12 12M4 8h4m0 0v4m0-4l5 5m7-5h-4m0 0v4m0-4l-5 5M4 16h4m0 0v4m0-4l5-5m7 5h-4m0 0v4m0-4l-5-5"
+								/>
+							</svg>
+						{:else}
+							<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
+								/>
+							</svg>
+						{/if}
+					</button>
+				</div>
+			{/if}
 
 			<!-- Stop Button - Top Left -->
 			<div class="absolute top-3 left-3 z-10">

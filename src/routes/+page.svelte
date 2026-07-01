@@ -7,12 +7,14 @@
 	import DrillsPanel from '$lib/components/DrillsPanel.svelte';
 	import ZoneSettingsPanel from '$lib/components/ZoneSettingsPanel.svelte';
 	import VisualizationPanel from '$lib/components/VisualizationPanel.svelte';
+	import TrainingLogPanel from '$lib/components/TrainingLogPanel.svelte';
 	import ActionBar from '$lib/components/ActionBar.svelte';
 	import TargetSetup from '$lib/components/TargetSetup.svelte';
 	import Header from '$lib/components/Header.svelte';
 	import CameraStage from '$lib/components/CameraStage.svelte';
 	import HitsList from '$lib/components/HitsList.svelte';
 	import StatusPills from '../lib/components/StatusPills.svelte';
+	import { addRep, createSession } from '$lib/storage/trainingLog.js';
 	import { driver } from 'driver.js';
 	import 'driver.js/dist/driver.css';
 
@@ -25,6 +27,7 @@
 	let hits = $state([]);
 	let calibrationMode = $state(false);
 	let calibrationPoints = $state([]);
+	let calibrationFrame = $state(null);
 	let targets = $state([]); // Array of { id, name, boundary }
 	let targetBoundary = $derived(targets.length > 0 ? targets[targets.length - 1].boundary : null); // Backward compatibility
 	let detectionActive = $state(false);
@@ -79,6 +82,7 @@
 	let shotTimerAutoNextTimeout = null; // Timeout for automatic next round
 	let audioContext = null;
 	let showDrills = $state(false);
+	let showTrainingLog = $state(false);
 	let showSessionStats = $state(false);
 	let timerDisplayUpdate = $state(0); // Force reactivity for timer display
 	let shotTimerCooldownUntil = $state(null); // Cooldown period after timer stops
@@ -89,6 +93,9 @@
 	let tempDrillData = $state({}); // Intermediate drill data for multi-stage drills
 	let consecutiveMalfunctions = 0; // Track consecutive malfunctions to prevent bad luck streaks
 	const CALIBRATION_CLICK_DEBOUNCE_MS = 300; // Prevent double-firing
+	let activeTrainingSessionId = null;
+	let activeTrainingSessionPromise = null;
+	let trainingLogRefreshKey = $state(0);
 
 	// Shot Sequence Visualization State
 	let sessionShotCounter = $state(0); // Sequential shot number counter
@@ -149,7 +156,7 @@
 
 				// Auto-start calibration if setup is complete and calibration is needed (unless freeform mode)
 				if (isSetupComplete && targets.length === 0 && targetMode !== 'freeform') {
-					startCalibration();
+					startCalibration(false);
 				}
 			}
 		} catch (error) {
@@ -204,8 +211,25 @@
 			canvas.height = video.videoHeight;
 		}
 
+		if (calibrationMode && calibrationFrame) {
+			if (canvas.width !== calibrationFrame.width || canvas.height !== calibrationFrame.height) {
+				canvas.width = calibrationFrame.width;
+				canvas.height = calibrationFrame.height;
+			}
+
+			drawOverlays(ctx, canvas.width, canvas.height);
+			animationFrameId = requestAnimationFrame(processFrames);
+			return;
+		}
+
 		// Draw video frame to canvas
 		ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+		if (calibrationMode || zoneCalibrationMode) {
+			drawOverlays(ctx, canvas.width, canvas.height);
+			animationFrameId = requestAnimationFrame(processFrames);
+			return;
+		}
 
 		// Get image data for processing
 		const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -565,7 +589,11 @@
 	function drawOverlays(ctx, width, height) {
 		// Clear canvas (video is redrawn each frame)
 		ctx.clearRect(0, 0, width, height);
-		ctx.drawImage(videoElement, 0, 0, width, height);
+		if (calibrationMode && calibrationFrame) {
+			ctx.putImageData(calibrationFrame.imageData, 0, 0);
+		} else {
+			ctx.drawImage(videoElement, 0, 0, width, height);
+		}
 
 		// Draw diagnostic overlay if enabled (draw before target zones so it's behind)
 		if (showDiagnosticOverlay) {
@@ -931,6 +959,7 @@
 			targets = [...targets, newTarget];
 			calibrationMode = false;
 			calibrationPoints = [];
+			calibrationFrame = null;
 
 			// Load template zones if pre-loaded mode
 			if (targetMode === 'preloaded') {
@@ -1083,15 +1112,68 @@
 
 	// Drawer control helpers
 
-	function startCalibration() {
+	function captureCalibrationFrame() {
+		if (!videoElement || !videoElement.videoWidth || !videoElement.videoHeight) {
+			calibrationFrame = null;
+			return;
+		}
+
+		const tempCanvas = document.createElement('canvas');
+		const tempCtx = tempCanvas.getContext('2d');
+		tempCanvas.width = videoElement.videoWidth;
+		tempCanvas.height = videoElement.videoHeight;
+		tempCtx.drawImage(videoElement, 0, 0, tempCanvas.width, tempCanvas.height);
+
+		calibrationFrame = {
+			width: tempCanvas.width,
+			height: tempCanvas.height,
+			imageData: tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height)
+		};
+	}
+
+	async function requestCalibrationFullscreen() {
+		if (!browser) return;
+
+		const cameraViewport = document.querySelector('.camera-viewport-container');
+		if (!cameraViewport || document.fullscreenElement) return;
+
+		try {
+			await cameraViewport.requestFullscreen();
+			isFullscreen = true;
+		} catch (error) {
+			console.warn('Calibration fullscreen request was not available:', error);
+		}
+	}
+
+	function retakeCalibrationFrame() {
+		captureCalibrationFrame();
+	}
+
+	function undoCalibrationPoint() {
+		calibrationPoints = calibrationPoints.slice(0, -1);
+	}
+
+	function cancelTargetCalibration() {
+		calibrationMode = false;
+		calibrationPoints = [];
+		calibrationFrame = null;
+	}
+
+	function startCalibration(requestFullscreen = true) {
 		calibrationMode = true;
 		calibrationPoints = [];
+		captureCalibrationFrame();
+
+		if (requestFullscreen) {
+			requestCalibrationFullscreen();
+		}
 	}
 
 	function clearCalibration() {
 		targets = [];
 		calibrationPoints = [];
 		calibrationMode = false;
+		calibrationFrame = null;
 		customZoneBounds = { A: null, C: null, D: null };
 		zoneCalibrationMode = null;
 		zoneCalibrationPoints = [];
@@ -1466,6 +1548,7 @@
 			};
 
 			shotTimerSession.reps = [...shotTimerSession.reps, repResult];
+			persistCompletedRep(repResult);
 
 			console.log(`Draw time: ${(repResult.drawTime / 1000).toFixed(3)}s, Zone: ${hit.zone}`);
 
@@ -1549,6 +1632,7 @@
 			};
 
 			shotTimerSession.reps = [...shotTimerSession.reps, repResult];
+			persistCompletedRep(repResult);
 
 			console.log(`Reload Drill Complete. Total: ${(totalTime / 1000).toFixed(3)}s`);
 
@@ -1592,6 +1676,7 @@
 			};
 
 			shotTimerSession.reps = [...shotTimerSession.reps, repResult];
+			persistCompletedRep(repResult);
 
 			console.log(
 				`Call-out time: ${(repResult.drawTime / 1000).toFixed(3)}s, Target: ${hit.zone}, Result: ${isWrongTarget ? 'FAIL' : 'PASS'}`
@@ -1647,11 +1732,75 @@
 		startDrill();
 	}
 
+	function cloneForStorage(value) {
+		return JSON.parse(JSON.stringify(value));
+	}
+
+	function getTrainingSessionSnapshot() {
+		return {
+			drillType: shotTimerConfig.drillType,
+			targetMode,
+			selectedTemplate,
+			targets: cloneForStorage(targets),
+			zones: cloneForStorage(zones),
+			timerConfig: cloneForStorage(shotTimerConfig)
+		};
+	}
+
+	function beginPersistedTrainingSession() {
+		if (!browser) return;
+
+		activeTrainingSessionId = null;
+		activeTrainingSessionPromise = createSession(getTrainingSessionSnapshot())
+			.then((session) => {
+				activeTrainingSessionId = session.id;
+				trainingLogRefreshKey += 1;
+				return session.id;
+			})
+			.catch((error) => {
+				console.error('Error creating training session:', error);
+				activeTrainingSessionPromise = null;
+				return null;
+			});
+	}
+
+	async function getActiveTrainingSessionId() {
+		if (!browser) return null;
+		if (activeTrainingSessionId) return activeTrainingSessionId;
+		if (activeTrainingSessionPromise) return activeTrainingSessionPromise;
+
+		const session = await createSession(getTrainingSessionSnapshot());
+		activeTrainingSessionId = session.id;
+		return activeTrainingSessionId;
+	}
+
+	function persistCompletedRep(repResult) {
+		if (!browser) return;
+
+		getActiveTrainingSessionId()
+			.then((sessionId) => {
+				if (!sessionId) return null;
+				return addRep(sessionId, {
+					...cloneForStorage(repResult),
+					round: currentRound,
+					targetMode,
+					selectedTemplate
+				});
+			})
+			.then((storedRep) => {
+				if (storedRep) trainingLogRefreshKey += 1;
+			})
+			.catch((error) => {
+				console.error('Error saving training rep:', error);
+			});
+	}
+
 	function startSession() {
 		shotTimerSession = {
 			reps: [],
 			startedAt: Date.now()
 		};
+		beginPersistedTrainingSession();
 		currentRound = 0; // Reset round counter (will be incremented in startDrill)
 		consecutiveMalfunctions = 0; // Reset malfunction streak
 		shotTimerCooldownUntil = null; // Reset cooldown
@@ -1923,7 +2072,7 @@
 						}
 						// Auto-start calibration if needed (unless freeform mode)
 						if (isStreaming && !targetBoundary && targetMode !== 'freeform') {
-							startCalibration();
+							startCalibration(false);
 						}
 						// Continue onboarding if active
 						if (driverObj && driverObj.isActive()) {
@@ -2017,6 +2166,7 @@
 					{isSetupComplete}
 					{calibrationMode}
 					{calibrationPoints}
+					hasFrozenCalibrationFrame={!!calibrationFrame}
 					{zoneCalibrationMode}
 					{zoneCalibrationPoints}
 					{zones}
@@ -2033,6 +2183,9 @@
 					on:startCamera={startCamera}
 					on:stopCamera={stopCamera}
 					on:toggleFullscreen={toggleFullscreen}
+					on:retakeCalibrationFrame={retakeCalibrationFrame}
+					on:undoCalibrationPoint={undoCalibrationPoint}
+					on:cancelCalibration={cancelTargetCalibration}
 					on:cancelZoneCalibration={cancelZoneCalibration}
 					on:toggleBackground={() => {
 						if (backgroundSnapshot) {
@@ -2064,6 +2217,7 @@
 			{hits}
 			bind:showZoneSettings
 			bind:showDrills
+			bind:showTrainingLog
 			bind:showVisualizationControls
 			bind:showDiagnosticOverlay
 			bind:showDebugOverlay
@@ -2077,6 +2231,7 @@
 			{autoNextCountdown}
 			{shotTimerStartTime}
 			{timerDisplayUpdate}
+			{trainingLogRefreshKey}
 			on:startCalibration={startCalibration}
 			on:clearCalibration={clearCalibration}
 			on:removeTarget={(e) => removeTarget(e.detail)}
@@ -2090,6 +2245,8 @@
 			on:endSession={() => {
 				shotTimerSession = { reps: [], startedAt: null };
 				shotTimerPhase = 'idle';
+				activeTrainingSessionId = null;
+				activeTrainingSessionPromise = null;
 			}}
 			on:export={exportShotPattern}
 			on:help={startOnboarding}
@@ -2136,8 +2293,26 @@
 					on:end={() => {
 						shotTimerSession = { reps: [], startedAt: null };
 						shotTimerPhase = 'idle';
+						activeTrainingSessionId = null;
+						activeTrainingSessionPromise = null;
 					}}
 					on:close={() => (showDrills = false)}
+				/>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Training Log Panel - Desktop (side panel) -->
+	{#if showTrainingLog}
+		<div
+			class="fixed top-0 z-50 hidden h-full w-96 overflow-y-auto border-l border-border bg-card shadow-2xl md:block"
+			style="right: {(showZoneSettings ? 384 : 0) + (showDrills ? 384 : 0)}px"
+		>
+			<div class="h-full p-6">
+				<TrainingLogPanel
+					mobile={false}
+					{trainingLogRefreshKey}
+					on:close={() => (showTrainingLog = false)}
 				/>
 			</div>
 		</div>
@@ -2147,7 +2322,9 @@
 	{#if showVisualizationControls}
 		<div
 			class="fixed top-0 z-50 hidden h-full w-96 overflow-y-auto border-l border-border bg-card shadow-2xl md:block"
-			style="right: {(showZoneSettings ? 384 : 0) + (showDrills ? 384 : 0)}px"
+			style="right: {(showZoneSettings ? 384 : 0) +
+				(showDrills ? 384 : 0) +
+				(showTrainingLog ? 384 : 0)}px"
 		>
 			<div class="h-full p-6">
 				<VisualizationPanel
