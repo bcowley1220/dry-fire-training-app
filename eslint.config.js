@@ -9,6 +9,7 @@ import svelteConfig from './svelte.config.js';
 const gitignorePath = fileURLToPath(new URL('./.gitignore', import.meta.url));
 
 /** @type {import('eslint').Linter.Config[]} */ export default [
+	{ ignores: ['old-logic-file.svelte'] }, // Archived reference, not part of the application.
 	includeIgnoreFile(gitignorePath),
 	js.configs.recommended,
 	...svelte.configs.recommended,

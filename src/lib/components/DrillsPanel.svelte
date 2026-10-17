@@ -41,7 +41,7 @@
 	function getCurrentElapsed() {
 		if (!startTime) return 0;
 		// Use the trigger prop to ensure reactivity
-		const _ = timerDisplayUpdate;
+		void timerDisplayUpdate;
 		return performance.now() - startTime;
 	}
 
@@ -164,7 +164,7 @@
 				<div>
 					<h5 class="text-md mb-3 font-semibold">Accuracy</h5>
 					<div class="space-y-2">
-						{#each calculateAccuracyByZone() as zone}
+						{#each calculateAccuracyByZone() as zone (zone.name)}
 							<div class="flex items-center justify-between border-b border-border py-2">
 								<span style="color: {zone.color}; font-weight: 600;">{zone.name}</span>
 								<span class="text-foreground">
@@ -179,7 +179,7 @@
 			<div>
 				<h5 class="text-md mb-3 font-semibold">Individual Reps</h5>
 				<div class="max-h-48 space-y-2 overflow-y-auto">
-					{#each session.reps as rep, index}
+					{#each session.reps as rep, index (rep.id)}
 						<div
 							class="flex items-center justify-between rounded bg-background/50 px-3 py-2 text-sm"
 						>
@@ -203,7 +203,7 @@
 							</div>
 							<div class="flex items-center gap-2">
 								{#if rep.drillType === 'reload' && rep.hits}
-									{#each rep.hits as hit}
+									{#each rep.hits as hit, hitIndex (hitIndex)}
 										<span style="color: {hit.zoneColor}; font-weight: 600; font-size: 0.75rem;"
 											>{hit.zone}</span
 										>
@@ -478,7 +478,7 @@
 						{formatTime(lastRep.totalTime)}s
 					</div>
 					<div class="flex flex-col items-center gap-2 text-sm">
-						{#each lastRep.hits as hit, i}
+						{#each lastRep.hits as hit, i (i)}
 							<div class="flex items-center gap-2">
 								<span class="text-xs font-bold text-muted-foreground uppercase">Shot {i + 1}:</span>
 								<span style="color: {hit.zoneColor}; font-weight: 600;">{hit.zone}</span>

@@ -53,11 +53,15 @@ function runTransaction(storeNames, mode, callback) {
 				};
 				transaction.onerror = () => {
 					db.close();
-					reject(transaction.error);
+					reject(
+						transaction.error || new Error('Training log transaction could not be completed.')
+					);
 				};
 				transaction.onabort = () => {
 					db.close();
-					reject(transaction.error);
+					reject(
+						transaction.error || new Error('Training log transaction could not be completed.')
+					);
 				};
 
 				result = callback(stores, transaction);
@@ -118,32 +122,41 @@ export async function addRep(sessionId, rep) {
 		timestamp: rep.timestamp || Date.now()
 	};
 
-	await runTransaction([SESSION_STORE, REP_STORE], 'readwrite', (stores) => {
-		const sessionRequest = stores[SESSION_STORE].get(sessionId);
+	const repTime = storedRep.drillType === 'reload' ? storedRep.totalTime : storedRep.drawTime;
+	if (!Number.isFinite(repTime) || repTime < 0) {
+		throw new Error('A training rep must have a valid completion time.');
+	}
 
+	await runTransaction([SESSION_STORE, REP_STORE], 'readwrite', (stores, transaction) => {
+		const sessionRequest = stores[SESSION_STORE].get(sessionId);
 		sessionRequest.onsuccess = () => {
 			const session = sessionRequest.result;
-			if (!session) return;
-
-			const repTime = storedRep.drillType === 'reload' ? storedRep.totalTime : storedRep.drawTime;
-			const hits = storedRep.hits || (storedRep.hit ? [storedRep.hit] : []);
-			const nextRepCount = session.repCount + 1;
-			const previousTotal = (session.averageTime || 0) * session.repCount;
-
-			stores[SESSION_STORE].put({
-				...session,
-				endedAt: storedRep.timestamp,
-				updatedAt: Date.now(),
-				repCount: nextRepCount,
-				totalHits: session.totalHits + hits.length,
-				bestTime: session.bestTime === null ? repTime : Math.min(session.bestTime, repTime),
-				averageTime: (previousTotal + repTime) / nextRepCount,
-				drillType: storedRep.drillType || session.drillType
-			});
+			if (!session) {
+				transaction.abort();
+				return;
+			}
+			const existingRequest = stores[REP_STORE].get(storedRep.id);
+			existingRequest.onsuccess = () => {
+				// Retrying a write must not count the same rep twice.
+				if (existingRequest.result) {
+					if (existingRequest.result.sessionId !== sessionId) transaction.abort();
+					return;
+				}
+				const hits = storedRep.hits || (storedRep.hit ? [storedRep.hit] : []);
+				const nextRepCount = session.repCount + 1;
+				const previousTotal = (session.averageTime || 0) * session.repCount;
+				stores[SESSION_STORE].put({
+					...session,
+					endedAt: storedRep.timestamp,
+					updatedAt: Date.now(),
+					repCount: nextRepCount,
+					totalHits: session.totalHits + hits.length,
+					bestTime: session.bestTime === null ? repTime : Math.min(session.bestTime, repTime),
+					averageTime: (previousTotal + repTime) / nextRepCount
+				});
+				stores[REP_STORE].put(storedRep);
+			};
 		};
-
-		stores[REP_STORE].put(storedRep);
-		return storedRep;
 	});
 
 	return storedRep;

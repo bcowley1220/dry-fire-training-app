@@ -34,7 +34,7 @@
 	function getCurrentElapsed() {
 		if (!startTime) return 0;
 		// Use the trigger prop to ensure reactivity
-		const _ = timerDisplayUpdate;
+		void timerDisplayUpdate;
 		return performance.now() - startTime;
 	}
 
@@ -151,7 +151,7 @@
 				<div>
 					<h5 class="text-md mb-3 font-semibold">Accuracy</h5>
 					<div class="space-y-2">
-						{#each calculateAccuracyByZone() as zone}
+						{#each calculateAccuracyByZone() as zone (zone.name)}
 							<div class="flex items-center justify-between border-b border-border py-2">
 								<span style="color: {zone.color}; font-weight: 600;">{zone.name}</span>
 								<span class="text-foreground">
@@ -166,7 +166,7 @@
 			<div>
 				<h5 class="text-md mb-3 font-semibold">Individual Reps</h5>
 				<div class="max-h-48 space-y-2 overflow-y-auto">
-					{#each session.reps as rep, index}
+					{#each session.reps as rep, index (rep.id)}
 						<div
 							class="flex items-center justify-between rounded bg-background/50 px-3 py-2 text-sm"
 						>

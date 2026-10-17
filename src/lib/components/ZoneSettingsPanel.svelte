@@ -3,6 +3,7 @@
 
 	export let zones;
 	export let mobile = false;
+	export let canCalibrate = false;
 
 	const dispatch = createEventDispatcher();
 
@@ -47,8 +48,14 @@
 			</svg>
 		</button>
 	</div>
+	<button
+		on:click={() => dispatch('defineZones')}
+		disabled={!canCalibrate}
+		class="mb-4 w-full rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground disabled:opacity-50"
+		>Draw zones on target</button
+	>
 	<div class="space-y-6">
-		{#each ['A', 'C', 'D'] as zoneName}
+		{#each ['A', 'C', 'D'] as zoneName (zoneName)}
 			{@const zone = zones[zoneName]}
 			<div class="rounded-lg border border-border bg-background/50 p-4">
 				<div class="mb-3 flex items-center gap-3">
@@ -83,7 +90,7 @@
 							X-axis: {zone.bounds.x[0].toFixed(2)} - {zone.bounds.x[1].toFixed(2)}
 						</div>
 						<div class="space-y-2">
-							{#each ['Min', 'Max'] as label, i}
+							{#each ['Min', 'Max'] as label, i (label)}
 								<div>
 									<label
 										for="x-{label.toLowerCase()}-{zoneName}-{mobile ? 'mobile' : 'desktop'}"
@@ -109,7 +116,7 @@
 							Y-axis: {zone.bounds.y[0].toFixed(2)} - {zone.bounds.y[1].toFixed(2)}
 						</div>
 						<div class="space-y-2">
-							{#each ['Min', 'Max'] as label, i}
+							{#each ['Min', 'Max'] as label, i (label)}
 								<div>
 									<label
 										for="y-{label.toLowerCase()}-{zoneName}-{mobile ? 'mobile' : 'desktop'}"
@@ -133,7 +140,7 @@
 					<div class="text-xs text-muted-foreground">
 						<p>Zone covers:</p>
 						<p>
-							{((zone.bounds.x[1] - zone.bounds.x[0]) * 100).toFixed(0)}% width ×{' '}
+							{((zone.bounds.x[1] - zone.bounds.x[0]) * 100).toFixed(0)}% width ×
 							{((zone.bounds.y[1] - zone.bounds.y[0]) * 100).toFixed(0)}% height
 						</p>
 					</div>

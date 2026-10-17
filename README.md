@@ -31,6 +31,12 @@ This is just a demo version to do proof of concept testing.
 - **Replay Mode**: Review shots one at a time
 - **Export**: Export shot patterns for analysis
 
+### Training History
+
+Completed draw, reload, and call-out reps are saved automatically on this device using IndexedDB. Open **Log** to review sessions, timing, and hit zones. This history stays in the same browser; it does not sync across devices. Clearing browser site data removes it. Resetting app preferences keeps saved history.
+
+During target calibration, the camera image freezes so you can select four corners. Use **Undo** to correct the last point, **Retake** to capture a new image and start over, or **Cancel** to return to training. After calibrating a target, open **Zones → Draw zones on target** to define scoring zones visually.
+
 ### 📱 Responsive Design
 
 - **Mobile-Friendly**: Works on phones, tablets, and desktops
@@ -261,6 +267,7 @@ dry-fire-trainer/
 ```bash
 npm run format    # Format code with Prettier
 npm run lint      # Check code formatting and linting
+npm test          # Check training history and session isolation
 ```
 
 ### Key Functions

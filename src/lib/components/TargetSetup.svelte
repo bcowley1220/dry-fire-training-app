@@ -197,7 +197,7 @@
 
 			{#if isTemplateDropdownOpen}
 				<div class="animate-fade-in overflow-hidden rounded-lg border border-border bg-secondary">
-					{#each Object.entries(templates) as [id, template]}
+					{#each Object.entries(templates) as [id, template] (id)}
 						{#if !template.grid}
 							<button
 								on:click={() => {

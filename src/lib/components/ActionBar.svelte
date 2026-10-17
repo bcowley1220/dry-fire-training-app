@@ -36,6 +36,19 @@
 	let actionBarExpanded = false;
 
 	const dispatch = createEventDispatcher();
+
+	function togglePanel(panel) {
+		const wasOpen = {
+			zones: showZoneSettings,
+			drills: showDrills,
+			log: showTrainingLog,
+			sequence: showVisualizationControls
+		}[panel];
+		showZoneSettings = panel === 'zones' && !wasOpen;
+		showDrills = panel === 'drills' && !wasOpen;
+		showTrainingLog = panel === 'log' && !wasOpen;
+		showVisualizationControls = panel === 'sequence' && !wasOpen;
+	}
 </script>
 
 <div class="safe-area-pb fixed right-0 bottom-0 left-0 z-40">
@@ -68,7 +81,7 @@
 		</button>
 
 		<!-- Main Quick Actions -->
-		<div class="flex justify-center gap-3 px-4 pb-3">
+		<div class="flex flex-wrap justify-center gap-2 px-2 pb-3">
 			<button
 				id="btn-calibrate"
 				on:click={() => dispatch('startCalibration')}
@@ -98,7 +111,7 @@
 				{/if}
 			</button>
 			<button
-				on:click={() => (showZoneSettings = !showZoneSettings)}
+				on:click={() => togglePanel('zones')}
 				class="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-secondary p-3 text-foreground transition-all duration-200 hover:bg-secondary/80 active:scale-95"
 			>
 				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -113,7 +126,7 @@
 			</button>
 			<button
 				id="btn-drills"
-				on:click={() => (showDrills = !showDrills)}
+				on:click={() => togglePanel('drills')}
 				class="flex flex-col items-center gap-1.5 rounded-xl border border-warning/30 bg-warning/20 p-3 text-warning transition-all duration-200 hover:bg-warning/30 active:scale-95"
 			>
 				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -127,7 +140,7 @@
 				<span class="text-xs font-medium">Drills</span>
 			</button>
 			<button
-				on:click={() => (showTrainingLog = !showTrainingLog)}
+				on:click={() => togglePanel('log')}
 				class="flex flex-col items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 p-3 text-primary transition-all duration-200 hover:bg-primary/20 active:scale-95"
 			>
 				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -191,7 +204,7 @@
 						<span class="text-[10px] font-medium">Target</span>
 					</button>
 					<button
-						on:click={() => (showVisualizationControls = !showVisualizationControls)}
+						on:click={() => togglePanel('sequence')}
 						class="flex flex-col items-center gap-1.5 rounded-xl border border-border bg-secondary p-2.5 text-foreground transition-all duration-200 hover:bg-secondary/80 active:scale-95"
 					>
 						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -330,6 +343,8 @@
 					<ZoneSettingsPanel
 						bind:zones
 						mobile={true}
+						canCalibrate={isStreaming && targets.length > 0 && !calibrationMode}
+						on:defineZones={() => dispatch('defineZones')}
 						on:close={() => (showZoneSettings = false)}
 						on:reset={() => dispatch('resetZones')}
 					/>
@@ -365,7 +380,7 @@
 				>
 					<TrainingLogPanel
 						mobile={true}
-						{trainingLogRefreshKey}
+						refreshKey={trainingLogRefreshKey}
 						on:close={() => (showTrainingLog = false)}
 					/>
 				</div>

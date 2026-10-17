@@ -1,5 +1,6 @@
 <script>
 	import { createEventDispatcher, onMount } from 'svelte';
+	import { browser } from '$app/environment';
 	import { deleteSession, getSessionWithReps, getSessions } from '$lib/storage/trainingLog.js';
 
 	export let refreshKey = 0;
@@ -7,6 +8,7 @@
 
 	const dispatch = createEventDispatcher();
 
+	let mounted = false;
 	let sessions = [];
 	let selectedSession = null;
 	let selectedReps = [];
@@ -98,18 +100,22 @@
 		if (!selectedSession) return;
 		if (!confirm('Delete this training session?')) return;
 
-		await deleteSession(selectedSession.id);
-		selectedSession = null;
-		selectedReps = [];
-		await loadSessions(false);
+		try {
+			await deleteSession(selectedSession.id);
+			selectedSession = null;
+			selectedReps = [];
+			await loadSessions(false);
+		} catch (err) {
+			error = err.message || 'Unable to delete session.';
+		}
 	}
 
-	$: if (refreshKey !== undefined) {
+	$: if (browser && mounted && refreshKey !== undefined) {
 		loadSessions();
 	}
 
 	onMount(() => {
-		loadSessions();
+		mounted = true;
 	});
 </script>
 

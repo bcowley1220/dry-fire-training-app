@@ -12,7 +12,6 @@
 	const CLOSED_HEIGHT = 8; // Show handle when closed (8vh = ~60px on most phones)
 	const PARTIAL_HEIGHT = 30;
 	const FULL_HEIGHT = 90;
-	const SNAP_THRESHOLD = 10; // vh units for snapping
 
 	// Device detection
 	let isMobile = $state(false);

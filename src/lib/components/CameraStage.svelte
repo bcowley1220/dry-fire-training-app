@@ -84,7 +84,7 @@
 			clientY = event.clientY;
 		}
 
-		const wrapper = canvasElement.parentElement;
+		const wrapper = canvasElement.parentElement?.parentElement;
 		if (!wrapper) return;
 
 		const wrapperRect = wrapper.getBoundingClientRect();
@@ -105,17 +105,24 @@
 			offsetY = 0;
 		}
 
-		const adjustedX = clientX - wrapperRect.left - offsetX;
-		const adjustedY = clientY - wrapperRect.top - offsetY;
+		const adjustedX = clientX - wrapperRect.left;
+		const adjustedY = clientY - wrapperRect.top;
 
-		const untransformedX = adjustedX / cameraZoom - cameraPanX / cameraZoom;
-		const untransformedY = adjustedY / cameraZoom - cameraPanY / cameraZoom;
+		const untransformedX = (adjustedX - cameraPanX) / cameraZoom - offsetX;
+		const untransformedY = (adjustedY - cameraPanY) / cameraZoom - offsetY;
 
 		const scaleX = canvasElement.width / displayedWidth;
 		const scaleY = canvasElement.height / displayedHeight;
 		const actualX = untransformedX * scaleX;
 		const actualY = untransformedY * scaleY;
 
+		if (
+			actualX < 0 ||
+			actualY < 0 ||
+			actualX > canvasElement.width ||
+			actualY > canvasElement.height
+		)
+			return;
 		dispatch('canvasClick', { x: actualX, y: actualY, event });
 	}
 
@@ -402,7 +409,7 @@
 				</button>
 			</div>
 			<div
-				class="absolute bottom-4 left-1/2 z-20 w-[75%] -translate-x-1/2 transform rounded bg-yellow-500/70 px-4 py-2 text-center font-semibold text-black backdrop-blur-sm"
+				class="pointer-events-none absolute bottom-4 left-1/2 z-20 w-[75%] -translate-x-1/2 transform rounded bg-yellow-500/70 px-4 py-2 text-center font-semibold text-black backdrop-blur-sm"
 			>
 				{#if calibrationPoints.length === 0}
 					Tap corners CLOCKWISE: Start with top-left corner
@@ -587,7 +594,7 @@
 			{/if}
 
 			<!-- Stop Button - Top Left -->
-			<div class="absolute top-3 left-3 z-10">
+			<div class="absolute top-3 left-3 z-10" class:hidden={calibrationMode || zoneCalibrationMode}>
 				<button
 					on:click={() => dispatch('stopCamera')}
 					class="glass flex items-center gap-1.5 rounded-lg border-0 bg-destructive/20 px-4 py-2 text-sm font-medium text-destructive shadow-lg backdrop-blur-xl hover:bg-destructive/30"

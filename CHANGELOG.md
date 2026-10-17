@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Frozen-frame target calibration with Retake, Undo, and Cancel controls.
+- On-device training history for draw, reload, and call-out reps.
+- Automated history tests covering persistence, retries, deletion, and session isolation.
+
+### Fixed
+
+- Refresh saved history after completed reps and report storage failures without interrupting training.
+- Keep asynchronous writes attached to their original session; avoid duplicate rep counts and orphaned records.
+- Reset calibration points when retaking a frame and map taps correctly through zoom and letterboxing.
+- Open one control panel at a time and reconnect visual zone drawing.
+- Cancel pending drill timers when ending a session, stopping the camera, or changing setup.
+- Load saved settings before writing defaults; preserve training history when resetting preferences.
+
 ### Fixed
 
 - **Delete Target Bug**: Fixed missing `removeTarget` and `renameTarget` functions in `+page.svelte` that caused UI to break when managing targets.
