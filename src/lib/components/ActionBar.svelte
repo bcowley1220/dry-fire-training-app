@@ -3,6 +3,7 @@
 	import ZoneSettingsPanel from './ZoneSettingsPanel.svelte';
 	import DrillsPanel from './DrillsPanel.svelte';
 	import VisualizationPanel from './VisualizationPanel.svelte';
+	import TrainingLogPanel from './TrainingLogPanel.svelte';
 
 	// Props for button states
 	export let calibrationMode = false;
@@ -13,6 +14,7 @@
 	// Props for panel visibility (bindable)
 	export let showZoneSettings = false;
 	export let showDrills = false;
+	export let showTrainingLog = false;
 	export let showVisualizationControls = false;
 	export let showDiagnosticOverlay = false;
 	export let showDebugOverlay = false;
@@ -28,6 +30,7 @@
 	export let shotTimerStartTime;
 	export let timerDisplayUpdate;
 	export let visualizationState;
+	export let trainingLogRefreshKey = 0;
 
 	// Internal state
 	let actionBarExpanded = false;
@@ -41,6 +44,7 @@
 		class="glass border-t border-border transition-all duration-300 ease-out {actionBarExpanded ||
 		showZoneSettings ||
 		showDrills ||
+		showTrainingLog ||
 		showVisualizationControls
 			? 'pb-4'
 			: 'pb-0'}"
@@ -121,6 +125,20 @@
 					/>
 				</svg>
 				<span class="text-xs font-medium">Drills</span>
+			</button>
+			<button
+				on:click={() => (showTrainingLog = !showTrainingLog)}
+				class="flex flex-col items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/10 p-3 text-primary transition-all duration-200 hover:bg-primary/20 active:scale-95"
+			>
+				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M9 17v-6h6v6m-7 4h8a2 2 0 002-2V7.414a2 2 0 00-.586-1.414l-2.414-2.414A2 2 0 0013.586 3H8a2 2 0 00-2 2v14a2 2 0 002 2z"
+					/>
+				</svg>
+				<span class="text-xs font-medium">Log</span>
 			</button>
 			<button
 				on:click={() => dispatch('clearHits')}
@@ -225,7 +243,7 @@
 							Active Targets
 						</h4>
 						<div class="grid max-h-32 grid-cols-2 gap-2 overflow-y-auto">
-							{#each targets as target}
+							{#each targets as target (target.id)}
 								<div
 									class="flex items-center justify-between rounded-lg border border-border/50 bg-secondary/30 p-2"
 								>
@@ -337,6 +355,18 @@
 						on:next={() => dispatch('nextRep')}
 						on:end={() => dispatch('endSession')}
 						on:close={() => (showDrills = false)}
+					/>
+				</div>
+			{/if}
+
+			{#if showTrainingLog}
+				<div
+					class="animate-fade-in max-h-[50vh] overflow-y-auto border-t border-border/50 px-4 pt-3"
+				>
+					<TrainingLogPanel
+						mobile={true}
+						{trainingLogRefreshKey}
+						on:close={() => (showTrainingLog = false)}
 					/>
 				</div>
 			{/if}
