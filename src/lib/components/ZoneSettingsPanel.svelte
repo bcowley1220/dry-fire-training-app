@@ -1,5 +1,6 @@
 <script>
 	import { createEventDispatcher } from 'svelte';
+	import Icon from './Icon.svelte';
 
 	export let zones;
 	export let mobile = false;
@@ -30,141 +31,86 @@
 	}
 </script>
 
-<div class={mobile ? 'mb-4 rounded-lg bg-secondary/50 p-4' : ''}>
-	<div class="mb-4 flex items-center justify-between {mobile ? '' : 'mb-6'}">
-		<h3 class={mobile ? 'text-lg font-semibold' : 'text-xl font-semibold'}>Custom Zone Settings</h3>
-		<button
-			on:click={() => dispatch('close')}
-			class="rounded-lg bg-secondary px-3 py-1.5 text-sm font-semibold transition-colors hover:bg-secondary/80"
-			aria-label="Close zone settings"
-		>
-			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					stroke-width="2"
-					d="M6 18L18 6M6 6l12 12"
+<div class="zone-editor" class:compact={mobile}>
+	<p class="small muted">
+		Draw A, C, and D zones on the most recently added target, from the smallest zone to the largest.
+	</p>
+	<button class="btn btn-full" disabled={!canCalibrate} on:click={() => dispatch('defineZones')}
+		><Icon name="target" size={18} />Draw zones on target</button
+	>
+	<div class="zone-points">
+		{#each ['A', 'C', 'D'] as name (name)}<div class="field">
+				<label for="zone-points-{name}-{mobile}">{name} zone points</label><input
+					id="zone-points-{name}-{mobile}"
+					type="number"
+					min="0"
+					max="10"
+					value={zones[name].points}
+					on:change={(event) => updateZonePoints(name, event.target.value)}
 				/>
-			</svg>
-		</button>
+			</div>{/each}
 	</div>
-	<button
-		on:click={() => dispatch('defineZones')}
-		disabled={!canCalibrate}
-		class="mb-4 w-full rounded-lg bg-primary px-4 py-3 font-semibold text-primary-foreground disabled:opacity-50"
-		>Draw zones on target</button
-	>
-	<div class="space-y-6">
-		{#each ['A', 'C', 'D'] as zoneName (zoneName)}
-			{@const zone = zones[zoneName]}
-			<div class="rounded-lg border border-border bg-background/50 p-4">
-				<div class="mb-3 flex items-center gap-3">
-					<div
-						class="h-6 w-6 rounded border-2"
-						style="background-color: {zone.color}; border-color: {zone.color};"
-					></div>
-					<h4 class="text-md font-semibold" style="color: {zone.color}">
-						{zoneName}-zone ({zone.points} pts)
-					</h4>
-				</div>
-				<div class={mobile ? 'grid grid-cols-1 gap-4 md:grid-cols-2' : 'space-y-4'}>
-					<!-- Points -->
-					<div>
-						<label
-							for="points-{zoneName}-{mobile ? 'mobile' : 'desktop'}"
-							class="mb-1 block text-sm text-muted-foreground">Points</label
-						>
-						<input
-							id="points-{zoneName}-{mobile ? 'mobile' : 'desktop'}"
-							type="number"
-							min="0"
-							max="10"
-							value={zone.points}
-							on:input={(e) => updateZonePoints(zoneName, e.target.value)}
-							class="w-full rounded border border-border bg-background px-3 py-2 text-foreground"
-						/>
-					</div>
-					<!-- X-axis bounds -->
-					<div>
-						<div class="mb-1 block text-sm text-muted-foreground">
-							X-axis: {zone.bounds.x[0].toFixed(2)} - {zone.bounds.x[1].toFixed(2)}
-						</div>
-						<div class="space-y-2">
-							{#each ['Min', 'Max'] as label, i (label)}
-								<div>
-									<label
-										for="x-{label.toLowerCase()}-{zoneName}-{mobile ? 'mobile' : 'desktop'}"
-										class="text-xs text-muted-foreground">{label} X:</label
-									>
-									<input
-										id="x-{label.toLowerCase()}-{zoneName}-{mobile ? 'mobile' : 'desktop'}"
-										type="range"
-										min="0"
-										max="1"
-										step="0.01"
-										value={zone.bounds.x[i]}
-										on:input={(e) => updateZoneBounds(zoneName, 'x', i, e.target.value)}
-										class="w-full"
-									/>
-								</div>
-							{/each}
-						</div>
-					</div>
-					<!-- Y-axis bounds -->
-					<div>
-						<div class="mb-1 block text-sm text-muted-foreground">
-							Y-axis: {zone.bounds.y[0].toFixed(2)} - {zone.bounds.y[1].toFixed(2)}
-						</div>
-						<div class="space-y-2">
-							{#each ['Min', 'Max'] as label, i (label)}
-								<div>
-									<label
-										for="y-{label.toLowerCase()}-{zoneName}-{mobile ? 'mobile' : 'desktop'}"
-										class="text-xs text-muted-foreground">{label} Y:</label
-									>
-									<input
-										id="y-{label.toLowerCase()}-{zoneName}-{mobile ? 'mobile' : 'desktop'}"
-										type="range"
-										min="0"
-										max="1"
-										step="0.01"
-										value={zone.bounds.y[i]}
-										on:input={(e) => updateZoneBounds(zoneName, 'y', i, e.target.value)}
-										class="w-full"
-									/>
-								</div>
-							{/each}
-						</div>
-					</div>
-					<!-- Zone preview info -->
-					<div class="text-xs text-muted-foreground">
-						<p>Zone covers:</p>
-						<p>
-							{((zone.bounds.x[1] - zone.bounds.x[0]) * 100).toFixed(0)}% width ×
-							{((zone.bounds.y[1] - zone.bounds.y[0]) * 100).toFixed(0)}% height
-						</p>
-					</div>
-				</div>
-			</div>
-		{/each}
-	</div>
-
-	<div
-		class={mobile
-			? 'mt-4 flex items-center justify-between border-t border-border pt-4'
-			: 'mt-6 border-t border-border pt-6'}
-	>
-		<p class="text-xs text-muted-foreground {mobile ? '' : 'mb-4'}">
-			💡 Tip: Zones are checked from innermost (A) to outermost (D). Make sure A-zone is inside
-			C-zone, and C-zone is inside D-zone for best results.
+	<details class="tool-disclosure">
+		<summary>Adjust zone boundaries</summary>
+		<p class="small muted boundary-note">
+			Values are relative to the target, from 0 to 1. These scoring settings apply to all custom
+			targets.
 		</p>
-		<button
-			on:click={() => dispatch('reset')}
-			class="{mobile
-				? ''
-				: 'w-full'} rounded-lg bg-secondary px-4 py-2 text-sm font-semibold transition-colors hover:bg-secondary/80"
-		>
-			Reset to Defaults
-		</button>
-	</div>
+		{#each ['A', 'C', 'D'] as name (name)}<div class="zone-boundaries">
+				<strong>{name} zone</strong>{#each ['x', 'y'] as axis (axis)}<div class="field-pair">
+						{#each ['Start', 'End'] as label, index (label)}<div class="field">
+								<label for="zone-{name}-{axis}-{index}-{mobile}"
+									>{axis === 'x' ? 'Horizontal' : 'Vertical'}
+									{label.toLowerCase()}
+									<span class="muted">{zones[name].bounds[axis][index].toFixed(2)}</span></label
+								><input
+									id="zone-{name}-{axis}-{index}-{mobile}"
+									type="range"
+									min="0"
+									max="1"
+									step=".01"
+									value={zones[name].bounds[axis][index]}
+									on:input={(event) => updateZoneBounds(name, axis, index, event.target.value)}
+								/>
+							</div>{/each}
+					</div>{/each}
+			</div>{/each}
+	</details>
+	<button class="btn btn-quiet btn-full" on:click={() => dispatch('reset')}
+		>Reset scoring zones</button
+	>
 </div>
+
+<style>
+	.zone-editor {
+		display: flex;
+		flex-direction: column;
+		gap: 18px;
+	}
+	.zone-points {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 10px;
+	}
+	.zone-points label {
+		font-size: 0.75rem;
+	}
+	.zone-boundaries {
+		border-top: 1px solid #d9e1eb;
+		padding-top: 18px;
+		margin-top: 18px;
+	}
+	.zone-boundaries > strong {
+		display: block;
+		margin-bottom: 16px;
+	}
+	.zone-boundaries label {
+		font-size: 0.75rem;
+	}
+	.boundary-note {
+		margin-bottom: 18px;
+	}
+	.compact {
+		gap: 14px;
+	}
+</style>

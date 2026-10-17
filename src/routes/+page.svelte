@@ -8,23 +8,21 @@
 	import ZoneSettingsPanel from '$lib/components/ZoneSettingsPanel.svelte';
 	import VisualizationPanel from '$lib/components/VisualizationPanel.svelte';
 	import TrainingLogPanel from '$lib/components/TrainingLogPanel.svelte';
-	import ActionBar from '$lib/components/ActionBar.svelte';
 	import TargetSetup from '$lib/components/TargetSetup.svelte';
 	import Header from '$lib/components/Header.svelte';
 	import CameraStage from '$lib/components/CameraStage.svelte';
 	import HitsList from '$lib/components/HitsList.svelte';
-	import StatusPills from '../lib/components/StatusPills.svelte';
 	import { addRep, createSession } from '$lib/storage/trainingLog.js';
 	import { createSessionWriter } from '$lib/storage/sessionWriter.js';
-	import { driver } from 'driver.js';
-	import 'driver.js/dist/driver.css';
+	import Icon from '$lib/components/Icon.svelte';
 
 	// State
 	let videoElement = $state(null);
 	let canvasElement = $state(null);
 	let videoStream = $state(null);
 	let isStreaming = $state(false);
-	let cameraStarting = false;
+	let cameraStarting = $state(false);
+	let cameraGeneration = 0;
 	let hits = $state([]);
 	let calibrationMode = $state(false);
 	let calibrationPoints = $state([]);
@@ -41,11 +39,9 @@
 	// Target mode and configuration
 	let targetMode = $state('custom'); // 'preloaded' | 'custom' | 'freeform'
 	let selectedTemplate = $state('ipsc-classic');
-	let isSetupComplete = $state(false); // Track if setup is complete
 
 	// Customizable zones (start with defaults)
 	let zones = $state(JSON.parse(JSON.stringify(DEFAULT_ZONES)));
-	let showZoneSettings = $state(false);
 	let zoneCalibrationMode = $state(null); // 'A', 'C', 'D', or null
 	let zoneCalibrationPoints = $state([]);
 	let customZoneBounds = $state({
@@ -81,8 +77,6 @@
 	let shotTimerDelayTimeout = null;
 	let shotTimerAutoNextTimeout = null; // Timeout for automatic next round
 	let audioContext = null;
-	let showDrills = $state(false);
-	let showTrainingLog = $state(false);
 	let timerDisplayUpdate = $state(0); // Force reactivity for timer display
 	let shotTimerCooldownUntil = $state(null); // Cooldown period after timer stops
 	let currentRound = $state(0); // Current round number (1-indexed)
@@ -109,35 +103,74 @@
 		lineWidth: 2,
 		numberSize: 16
 	});
-	let showVisualizationControls = $state(false);
 	let showDiagnosticOverlay = $state(false);
 	let showDebugOverlay = $state(false); // Debug mode to show detection pixels
 	let isFullscreen = $state(false);
 
-	// Onboarding State
-	let driverObj = null;
+	let view = $state('practice');
+	let setupStep = $state('camera');
+	let showHelp = $state(false);
+	let uiNotice = $state('');
+	let detectionVerified = $state(false);
+	let checkHitStart = $state(0);
+	let targetReady = $derived(targetMode === 'freeform' || targets.length > 0);
+	let checkDetections = $derived(Math.max(0, hits.length - checkHitStart));
+	const steps = [
+		{ id: 'camera', label: 'Camera' },
+		{ id: 'targets', label: 'Targets' },
+		{ id: 'check', label: 'Check' },
+		{ id: 'train', label: 'Train' }
+	];
 
-	const driverConfig = {
-		showProgress: true,
-		animate: true,
-		allowClose: true,
-		doneBtnText: 'Done',
-		closeBtnText: 'Skip',
-		nextBtnText: 'Next',
-		prevBtnText: 'Back',
-		onDestroyed: () => {
-			if (browser) {
-				localStorage.setItem('tour_seen', 'true');
-			}
-			driverObj = null;
-		}
-	};
+	function stepDone(step) {
+		return step === 'camera'
+			? isStreaming
+			: step === 'targets'
+				? isStreaming && targetReady
+				: step === 'check'
+					? detectionVerified
+					: false;
+	}
+
+	function goToStep(step) {
+		if (shotTimerActive || autoNextCountdown !== null) return;
+		if (step !== 'camera' && !isStreaming) return;
+		if (['check', 'train'].includes(step) && !targetReady) return;
+		cancelTargetCalibration();
+		cancelZoneCalibration();
+		setupStep = step;
+		if (step === 'check') checkHitStart = hits.length;
+	}
+
+	function navigate(nextView) {
+		if (shotTimerActive || autoNextCountdown !== null) return;
+		if (nextView === 'history') stopCamera();
+		view = nextView;
+	}
+
+	function changeTargetMode() {
+		clearCalibration();
+		detectionVerified = false;
+	}
+
+	function toggleRoomFilter() {
+		if (backgroundSnapshot) backgroundSnapshot = null;
+		else takeBackgroundSnapshot();
+		detectionVerified = false;
+	}
+
+	function finishTraining() {
+		endSession();
+		stopCamera();
+		view = 'history';
+	}
 
 	// Initialize camera
 	async function startCamera() {
 		if (cameraStarting || isStreaming) return;
 		cameraStarting = true;
-		isSetupComplete = true;
+		const generation = ++cameraGeneration;
+		uiNotice = '';
 		await tick();
 		try {
 			const stream = await navigator.mediaDevices.getUserMedia({
@@ -148,30 +181,43 @@
 				}
 			});
 
+			if (generation !== cameraGeneration || view !== 'practice') {
+				stream.getTracks().forEach((track) => track.stop());
+				return;
+			}
 			videoStream = stream;
 			await tick();
+			if (generation !== cameraGeneration) return;
 			if (videoElement) {
 				if (videoElement.srcObject !== stream) videoElement.srcObject = stream;
 				await videoElement.play();
+				if (generation !== cameraGeneration) return;
 				isStreaming = true;
 				startDetection();
 				requestWakeLock();
 
-				// Auto-start calibration if setup is complete and calibration is needed (unless freeform mode)
-				if (isSetupComplete && targets.length === 0 && targetMode !== 'freeform') {
-					startCalibration(false);
-				}
+				setupStep = 'targets';
 			}
 		} catch (error) {
+			if (generation !== cameraGeneration) return;
 			stopCamera();
 			console.error('Error accessing camera:', error);
-			alert('Unable to access camera. Please ensure you grant camera permissions.');
+			uiNotice =
+				error.name === 'NotAllowedError'
+					? 'Camera access is blocked. Allow camera access in your browser settings, then try again.'
+					: error.name === 'NotFoundError'
+						? 'No camera was found. Connect a camera, then try again.'
+						: 'The camera could not start. Close other apps using it, then try again.';
 		} finally {
-			cameraStarting = false;
+			if (generation === cameraGeneration) cameraStarting = false;
 		}
 	}
 
 	function stopCamera() {
+		cameraGeneration++;
+		cameraStarting = false;
+		setupStep = 'camera';
+		detectionVerified = false;
 		cancelDrill();
 		cancelTargetCalibration();
 		backgroundSnapshot = null;
@@ -236,7 +282,7 @@
 		// Draw video frame to canvas
 		ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-		if (calibrationMode || zoneCalibrationMode) {
+		if (calibrationMode || zoneCalibrationMode || ['camera', 'targets'].includes(setupStep)) {
 			drawOverlays(ctx, canvas.width, canvas.height);
 			animationFrameId = requestAnimationFrame(processFrames);
 			return;
@@ -357,7 +403,7 @@
 		drawOverlays(ctx, canvas.width, canvas.height);
 
 		// Update timer display if active (trigger reactivity for real-time display)
-		if (shotTimerPhase === 'active' && shotTimerStartTime) {
+		if (['active', 'reloading'].includes(shotTimerPhase) && shotTimerStartTime) {
 			// Update reactive variable to trigger UI refresh
 			timerDisplayUpdate = performance.now();
 		}
@@ -1054,9 +1100,9 @@
 
 	function startZoneCalibration() {
 		cancelDrill();
-		showZoneSettings = false;
+		setupStep = 'targets';
 		if (!targetBoundary) {
-			alert('Please calibrate the target boundary first!');
+			uiNotice = 'Mark a target before drawing its scoring zones.';
 			return;
 		}
 		zoneCalibrationMode = 'A';
@@ -1175,7 +1221,8 @@
 
 	function startCalibration(requestFullscreen = true) {
 		cancelDrill();
-		showZoneSettings = showDrills = showTrainingLog = showVisualizationControls = false;
+		setupStep = 'targets';
+		detectionVerified = false;
 		calibrationMode = true;
 		calibrationPoints = [];
 		captureCalibrationFrame();
@@ -1262,6 +1309,16 @@
 	}
 
 	// Shot Timer Functions
+	function unlockAudio() {
+		try {
+			getAudioContext()
+				.resume()
+				.catch((error) => console.error('Audio could not start:', error));
+		} catch (error) {
+			console.error('Audio is unavailable:', error);
+		}
+	}
+
 	function getAudioContext() {
 		if (!audioContext) {
 			audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -1335,6 +1392,7 @@
 	}
 
 	async function startDrill() {
+		uiNotice = '';
 		if (!isStreaming || calibrationMode || zoneCalibrationMode) return;
 		cancelDrill();
 		const generation = drillGeneration;
@@ -1375,7 +1433,7 @@
 
 		if (shotTimerConfig.drillType === 'callout') {
 			if (targets.length < 1) {
-				alert('You need at least one target for Call-Out drills.');
+				uiNotice = 'Add a named target before starting a call-out drill.';
 				cancelDrill();
 				return;
 			}
@@ -1447,7 +1505,7 @@
 		// Check for false start (hit before beep)
 		if (shotTimerPhase === 'waiting') {
 			console.warn('False start detected - hit before beep!');
-			alert('False start! Wait for the beep before shooting.');
+			uiNotice = 'Early hit detected. Wait for the beep before firing.';
 			return false; // Don't count this hit
 		}
 
@@ -1732,6 +1790,8 @@
 	}
 
 	function startSession() {
+		unlockAudio();
+		clearHits();
 		shotTimerSession = {
 			reps: [],
 			startedAt: Date.now()
@@ -1838,66 +1898,14 @@
 		});
 	}
 
-	function startOnboarding() {
-		driverObj = driver(driverConfig);
-
-		if (!isSetupComplete) {
-			// Phase 1: Setup
-			driverObj.setSteps([
-				{
-					element: '#setup-container',
-					popover: {
-						title: 'Welcome to Dry-Fire Trainer',
-						description:
-							"Let's get your range set up. Select your target mode above, then click Continue to start the camera.",
-						showButtons: [] // Hide buttons to force interaction with the UI
-					}
-				}
-			]);
-			driverObj.drive();
-		} else {
-			// Phase 2: Active (resumed after setup)
-			startActiveOnboarding();
-		}
-	}
-
-	function startActiveOnboarding() {
-		// Wait for DOM to update
-		setTimeout(() => {
-			if (!driverObj) driverObj = driver(driverConfig);
-
-			driverObj.setSteps([
-				{
-					element: '#btn-calibrate',
-					popover: {
-						title: 'Calibrate Target',
-						description:
-							'Click here to define your target area. You will tap the 4 corners of your target.'
-					}
-				},
-				{
-					element: '#btn-set-background',
-					popover: {
-						title: 'Environmental Nulling',
-						description:
-							'If you have false positives from lights or reflections, use this to ignore the static background.'
-					}
-				},
-				{
-					element: '#btn-drills',
-					popover: {
-						title: 'Start Training',
-						description: 'Open the Drills panel to select a drill and start your session.'
-					}
-				}
-			]);
-			driverObj.drive();
-		}, 500);
-	}
 	function loadSettings() {
 		if (!browser) return;
 
 		try {
+			const targetPreferences = JSON.parse(localStorage.getItem('targetPreferences') || 'null');
+			if (targetPreferences && ['custom', 'preloaded', 'freeform'].includes(targetPreferences.mode))
+				targetMode = targetPreferences.mode;
+			if (templates[targetPreferences?.template]) selectedTemplate = targetPreferences.template;
 			const savedConfig = localStorage.getItem('shotTimerConfig');
 			if (savedConfig) shotTimerConfig = { ...shotTimerConfig, ...JSON.parse(savedConfig) };
 
@@ -1923,7 +1931,13 @@
 	function resetApp() {
 		if (!browser) return;
 		if (confirm('Reset settings and current results? Saved training history will be kept.')) {
-			for (const key of ['shotTimerConfig', 'visualizationState', 'shotTimerSession', 'tour_seen'])
+			for (const key of [
+				'shotTimerConfig',
+				'visualizationState',
+				'shotTimerSession',
+				'tour_seen',
+				'targetPreferences'
+			])
 				localStorage.removeItem(key);
 			location.reload();
 		}
@@ -1931,6 +1945,10 @@
 
 	$effect(() => {
 		if (browser && settingsLoaded) {
+			localStorage.setItem(
+				'targetPreferences',
+				JSON.stringify({ mode: targetMode, template: selectedTemplate })
+			);
 			localStorage.setItem('shotTimerConfig', JSON.stringify(shotTimerConfig));
 			localStorage.setItem('visualizationState', JSON.stringify(visualizationState));
 			localStorage.setItem('shotTimerSession', JSON.stringify(shotTimerSession));
@@ -1960,9 +1978,6 @@
 		if (browser) {
 			loadSettings();
 			settingsLoaded = true;
-			if (!localStorage.getItem('tour_seen')) {
-				startOnboarding();
-			}
 		}
 	});
 
@@ -1980,137 +1995,108 @@
 	});
 </script>
 
-<svelte:head>
-	<title>Dry-Fire Trainer</title>
-</svelte:head>
+<svelte:head
+	><title>Dry-Fire Trainer | Your practice space</title><meta
+		name="description"
+		content="Practice with your own training laser and camera. Set up targets, run drills, and track your progress."
+	/></svelte:head
+>
 
-<div class="flex min-h-screen flex-col bg-background text-foreground">
-	<!-- Header -->
-	<Header on:help={startOnboarding} />
-
-	<main class="mx-auto flex w-full max-w-7xl flex-1 flex-col space-y-4 p-4 pb-36">
-		{#if trainingLogError}
-			<p
-				role="alert"
-				class="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning"
-			>
-				{trainingLogError}
-			</p>
-		{/if}
-		{#if !isSetupComplete}
-			<!-- Setup Mode -->
-			<div class="animate-fade-in space-y-4" id="setup-container">
-				<!-- Target Mode Selector -->
-				<TargetSetup
-					bind:targetMode
-					bind:selectedTemplate
-					{isStreaming}
-					on:complete={async () => {
-						isSetupComplete = true;
-						// Start camera if not already streaming
-						if (!isStreaming) {
-							await startCamera();
-						}
-						// Auto-start calibration if needed (unless freeform mode)
-						if (isStreaming && !targetBoundary && targetMode !== 'freeform') {
-							startCalibration(false);
-						}
-						// Continue onboarding if active
-						if (driverObj && driverObj.isActive()) {
-							driverObj.destroy(); // Close current step
-							startActiveOnboarding(); // Start next phase
-						}
-					}}
-				/>
-
-				<!-- Camera Preview (Setup Mode) -->
-				<div
-					class="relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-border bg-card"
-				>
-					<div
-						class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-card via-background to-card"
-					>
-						{#if !isStreaming}
-							<div class="space-y-4 p-8 text-center">
-								<div
-									class="mx-auto flex h-16 w-16 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground/30 bg-secondary/50"
-								>
-									<svg
-										class="h-8 w-8 text-muted-foreground"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-									>
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="2"
-											d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-										/>
-									</svg>
-								</div>
-								<div>
-									<p class="text-sm font-medium text-muted-foreground">Camera inactive</p>
-									<p class="mt-1 text-xs text-muted-foreground/60">Tap Start to begin</p>
-								</div>
-								<button
-									onclick={startCamera}
-									class="mx-auto mt-4 flex items-center gap-2 rounded-lg bg-primary px-6 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-								>
-									<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="2"
-											d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-										/>
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="2"
-											d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-										/>
-									</svg>
-									Start
-								</button>
-							</div>
-						{:else}
-							<div class="absolute inset-0 flex items-center justify-center">
-								<div class="space-y-3 text-center">
-									<div class="relative">
-										<div
-											class="mx-auto flex h-20 w-20 items-center justify-center rounded-full border-2 border-primary/30 bg-primary/20"
-										>
-											<div class="pulse-active h-3 w-3 rounded-full bg-primary"></div>
-										</div>
-										<div class="absolute inset-0 flex items-center justify-center">
-											<div
-												class="pulse-active h-12 w-12 rounded-full border-2 border-primary/20"
-											></div>
-										</div>
-									</div>
-									<p class="text-sm font-medium text-muted-foreground">Camera feed active</p>
-								</div>
-							</div>
-						{/if}
-					</div>
-				</div>
+<a class="skip-link" href="#main">Skip to practice</a>
+<Header
+	{view}
+	busy={shotTimerActive || autoNextCountdown !== null}
+	on:navigate={(event) => navigate(event.detail)}
+	on:help={() => (showHelp = !showHelp)}
+/>
+<main id="main" class="app-main">
+	{#if showHelp}<section class="help-strip">
+			<div>
+				<h3>A simple way to set up.</h3>
+				<p>
+					Prop up your device with the rear camera facing your practice area. Keep it still, mark
+					your targets, then check that a training laser pulse produces one hit. Camera images stay
+					on this device.
+				</p>
 			</div>
-		{:else}
-			<!-- Active Training Mode -->
-			<div class="animate-fade-in space-y-4">
+			<button class="icon-button" aria-label="Close setup help" onclick={() => (showHelp = false)}
+				><Icon name="close" /></button
+			>
+		</section>{/if}
+	{#if uiNotice}<p class="notice notice-error" role="alert">
+			{uiNotice}<button
+				class="notice-dismiss"
+				onclick={() => (uiNotice = '')}
+				aria-label="Dismiss message"><Icon name="close" size={17} /></button
+			>
+		</p>{/if}
+	{#if trainingLogError}<p class="notice notice-error" role="alert">{trainingLogError}</p>{/if}
+	{#if view === 'history'}
+		<div class="page-heading">
+			<div>
+				<h1>Your practice, over time.</h1>
+				<p>Completed drills, saved on this device.</p>
+			</div>
+			<button class="btn" onclick={() => navigate('practice')}
+				><Icon name="target" size={18} />Back to practice</button
+			>
+		</div>
+		<TrainingLogPanel refreshKey={trainingLogRefreshKey} on:practice={() => navigate('practice')} />
+	{/if}
+	<div
+		class="practice-screen"
+		class:training-focus={setupStep === 'train' && shotTimerPhase !== 'idle'}
+		class:screen-hidden={view !== 'practice'}
+	>
+		<div class="page-heading">
+			<div>
+				<h1>
+					{setupStep === 'train' ? 'A few minutes. Better habits.' : 'Set up your practice space.'}
+				</h1>
+				<p>
+					{setupStep === 'train'
+						? 'Your targets are set. Take it one rep at a time.'
+						: 'Your camera. Your laser. Targets wherever you make them.'}
+				</p>
+			</div>
+			<span class="local-label"><Icon name="camera" size={16} />Camera stays on your device</span>
+		</div>
+		<nav class="setup-progress" aria-label="Practice setup">
+			{#each steps as step, index (step.id)}
+				<button
+					class:active={setupStep === step.id}
+					class:done={stepDone(step.id)}
+					aria-current={setupStep === step.id ? 'step' : undefined}
+					disabled={shotTimerActive ||
+						autoNextCountdown !== null ||
+						(step.id !== 'camera' && !isStreaming) ||
+						(['check', 'train'].includes(step.id) && !targetReady) ||
+						!!zoneCalibrationMode ||
+						calibrationMode}
+					onclick={() => goToStep(step.id)}
+					><span class="step-number"
+						>{#if stepDone(step.id)}<Icon name="check" size={14} />{:else}{index + 1}{/if}</span
+					><span>{step.label}</span></button
+				>
+			{/each}
+		</nav>
+		<div
+			class="workspace"
+			class:training-workspace={setupStep === 'train'}
+			class:camera-setup={setupStep === 'camera'}
+		>
+			<div class="camera-column">
 				<CameraStage
 					bind:videoElement
 					bind:canvasElement
 					stream={videoStream}
 					{isStreaming}
-					{isSetupComplete}
+					starting={cameraStarting}
 					{calibrationMode}
 					{calibrationPoints}
 					hasFrozenCalibrationFrame={!!calibrationFrame}
 					{zoneCalibrationMode}
 					{zoneCalibrationPoints}
-					{zones}
 					{targets}
 					{waitingForClear}
 					callOutTarget={shotTimerActive &&
@@ -2121,346 +2107,681 @@
 					hasBackground={!!backgroundSnapshot}
 					bind:isFullscreen
 					on:canvasClick={handleCanvasClick}
-					on:startCamera={startCamera}
 					on:stopCamera={stopCamera}
 					on:toggleFullscreen={toggleFullscreen}
 					on:retakeCalibrationFrame={retakeCalibrationFrame}
 					on:undoCalibrationPoint={undoCalibrationPoint}
 					on:cancelCalibration={cancelTargetCalibration}
 					on:cancelZoneCalibration={cancelZoneCalibration}
-					on:toggleBackground={() => {
-						if (backgroundSnapshot) {
-							backgroundSnapshot = null;
-							console.log('Background snapshot cleared.');
-						} else {
-							takeBackgroundSnapshot();
-						}
-					}}
+					on:toggleBackground={toggleRoomFilter}
 				/>
-
-				<!-- Status Pills -->
-				<div class="flex flex-wrap items-center justify-center gap-2">
-					<StatusPills {isStreaming} {hits} {targets} {backgroundSnapshot} />
+				{#if setupStep === 'train'}<div class="camera-footnote">
+						<span
+							><Icon name="check" size={15} />{targetMode === 'freeform'
+								? 'Whole-view training'
+								: `${targets.length} target${targets.length === 1 ? '' : 's'} in view`}</span
+						><button
+							disabled={shotTimerActive || autoNextCountdown !== null}
+							onclick={() => goToStep('targets')}>Edit setup</button
+						>
+					</div>{:else}<p class="camera-note">
+						<Icon name="camera" size={16} />{calibrationMode
+							? 'Select each corner on the image above.'
+							: 'Keep your device steady once your targets are marked.'}
+					</p>{/if}
+				{#if isStreaming && setupStep === 'train'}<details class="below-camera tool-disclosure">
+						<summary><span>Shot view <span class="muted">({hits.length} hits)</span></span></summary
+						><HitsList {hits} /><VisualizationPanel
+							bind:visualizationState
+							{hits}
+							on:export={exportShotPattern}
+						/><button class="btn btn-quiet" disabled={!hits.length} onclick={clearHits}
+							><Icon name="trash" size={16} />Clear current hits</button
+						>
+					</details>{/if}
+			</div>
+			<section class="control-column" aria-label="Current training step">
+				{#if setupStep === 'camera'}
+					<div class="stack">
+						<div class="step-icon"><Icon name="camera" size={26} /></div>
+						<div>
+							<h2>Start with a clear view.</h2>
+							<p class="muted panel-intro">
+								Point your rear camera at the area you want to practice on.
+							</p>
+						</div>
+						<ul class="setup-instructions">
+							<li>
+								<span>Prop up your device</span>
+								<p>Use a stand or a steady surface.</p>
+							</li>
+							<li>
+								<span>Frame your practice area</span>
+								<p>Keep each target fully visible, with even lighting.</p>
+							</li>
+						</ul>
+						<button
+							id="btn-start-camera"
+							class="btn btn-primary btn-large btn-full"
+							disabled={cameraStarting}
+							onclick={() => (isStreaming ? goToStep('targets') : startCamera())}
+							><Icon name="camera" size={20} />{cameraStarting
+								? 'Connecting…'
+								: 'Enable camera'}</button
+						>
+						<p class="small muted">
+							Use any compatible red or green training laser. No special camera hardware required.
+						</p>
+						<button class="text-button" onclick={() => (showHelp = !showHelp)}
+							>Need help getting set up?</button
+						>
+					</div>
+				{:else if setupStep === 'targets'}
+					<div class="stack">
+						<div>
+							<h2>
+								{calibrationMode
+									? 'Mark what counts.'
+									: targets.length
+										? 'Your targets are in place.'
+										: 'Make a target of your own.'}
+							</h2>
+							<p class="muted panel-intro">
+								{calibrationMode
+									? 'Tap four corners on the paused image. You can undo a point or retake the frame.'
+									: 'Choose an area the camera can see. Paper targets are optional.'}
+							</p>
+						</div>
+						{#if !calibrationMode && !zoneCalibrationMode}<TargetSetup
+								bind:targetMode
+								bind:selectedTemplate
+								on:change={changeTargetMode}
+							/>{/if}
+						{#if targets.length && !calibrationMode}<div class="target-list">
+								{#each targets as target, index (target.id)}<div class="target-row">
+										<Icon name="target" size={18} /><input
+											type="text"
+											aria-label="Target name"
+											bind:value={target.name}
+											maxlength="40"
+											onblur={(event) =>
+												renameTarget(target.id, event.target.value.trim() || `Target ${index + 1}`)}
+											disabled={!!zoneCalibrationMode}
+										/><button
+											class="icon-button"
+											aria-label={`Remove ${target.name}`}
+											disabled={!!zoneCalibrationMode}
+											onclick={() => removeTarget(target.id)}
+											><Icon name="trash" size={17} /></button
+										>
+									</div>{/each}
+							</div>{/if}
+						{#if !calibrationMode && !zoneCalibrationMode && targetMode !== 'freeform'}<button
+								id="btn-calibrate"
+								class="btn btn-full"
+								onclick={() => startCalibration(false)}
+								><Icon name="plus" size={18} />{targets.length
+									? 'Add another target'
+									: 'Mark target corners'}</button
+							>{/if}
+						{#if zoneCalibrationMode}<p class="notice">
+								Mark the four corners of zone {zoneCalibrationMode} on the camera image. Zones are drawn
+								on the most recently added target.
+							</p>{/if}
+						{#if targetReady && !calibrationMode && !zoneCalibrationMode}<button
+								class="btn btn-primary btn-large btn-full"
+								onclick={() => goToStep('check')}
+								>Check detection<Icon name="chevron" size={17} /></button
+							>{/if}
+						{#if targetMode === 'custom' && targets.length && !calibrationMode && !zoneCalibrationMode}<details
+								class="tool-disclosure"
+							>
+								<summary>Scoring zones</summary><ZoneSettingsPanel
+									bind:zones
+									canCalibrate={isStreaming}
+									on:defineZones={startZoneCalibration}
+									on:reset={resetZonesToDefaults}
+								/>
+							</details>{/if}
+					</div>
+				{:else if setupStep === 'check'}
+					<div class="stack">
+						<div class="step-icon"><Icon name="target" size={26} /></div>
+						<div>
+							<h2>One pulse. One marker.</h2>
+							<p class="muted panel-intro">Check detection here before starting the clock.</p>
+						</div>
+						<div class="check-instruction">
+							<strong>First, filter the room lighting.</strong>
+							<p class="small muted">
+								Keep the training laser off, then capture the room. This helps ignore static red and
+								green objects.
+							</p>
+							<button
+								class="btn btn-full"
+								onclick={() => {
+									takeBackgroundSnapshot();
+									clearHits();
+									checkHitStart = 0;
+								}}
+								><Icon
+									name={backgroundSnapshot ? 'refresh' : 'light'}
+									size={18}
+								/>{backgroundSnapshot ? 'Refresh room filter' : 'Capture room lighting'}</button
+							>
+						</div>
+						<hr class="section-rule" />
+						<div>
+							<strong>Now fire a training pulse.</strong>
+							<p class="small muted check-copy">Confirm one marker appears where it landed.</p>
+						</div>
+						<div class="detection-count" aria-live="polite">
+							<span>{checkDetections}</span>
+							<div>
+								<strong>{checkDetections === 1 ? 'detection' : 'detections'}</strong>
+								<p>
+									{checkDetections
+										? 'Check the marker on the camera view.'
+										: 'Waiting for a training laser pulse.'}
+								</p>
+							</div>
+						</div>
+						<p class="small muted">
+							If hits appear without a pulse, refresh the room filter or adjust the lighting.
+						</p>
+						<button
+							class="btn btn-primary btn-large btn-full"
+							disabled={checkDetections < 1}
+							onclick={() => {
+								detectionVerified = true;
+								goToStep('train');
+							}}><Icon name="check" size={18} />Detection looks right</button
+						><button class="text-button" onclick={() => goToStep('train')}
+							>Skip the check for now</button
+						>
+					</div>
+				{:else}
+					<DrillsPanel
+						active={shotTimerActive}
+						phase={shotTimerPhase}
+						bind:config={shotTimerConfig}
+						session={shotTimerSession}
+						{currentRound}
+						{autoNextCountdown}
+						startTime={shotTimerStartTime}
+						{timerDisplayUpdate}
+						ready={isStreaming && targetReady}
+						targetCount={targets.length}
+						{waitingForClear}
+						callOutTarget={tempDrillData.callOutTargetName}
+						on:start={startSession}
+						on:cancel={cancelDrill}
+						on:next={nextRep}
+						on:finish={finishTraining}
+					/>
+				{/if}
+			</section>
+		</div>
+		<div class="practice-footer">
+			<span>Built for practice, with the gear you already have.</span>
+			<details class="utility-menu">
+				<summary>Tools & help</summary>
+				<div class="utility-content">
+					<label class="check-row"
+						><input type="checkbox" bind:checked={showDebugOverlay} /><span
+							>Detection debug overlay</span
+						></label
+					><label class="check-row"
+						><input type="checkbox" bind:checked={showDiagnosticOverlay} /><span
+							>Shot diagnostic overlay</span
+						></label
+					><button class="btn btn-quiet" onclick={() => (showHelp = !showHelp)}>Setup help</button
+					><button class="btn btn-quiet" onclick={resetApp}>Reset preferences</button>
 				</div>
-
-				<!-- Hits List -->
-				<HitsList {hits} />
-			</div>
-		{/if}
-	</main>
-
-	<!-- Bottom Action Bar -->
-	{#if isSetupComplete}
-		<ActionBar
-			{calibrationMode}
-			{isStreaming}
-			{targets}
-			{hits}
-			bind:showZoneSettings
-			bind:showDrills
-			bind:showTrainingLog
-			bind:showVisualizationControls
-			bind:showDiagnosticOverlay
-			bind:showDebugOverlay
-			bind:zones
-			bind:shotTimerConfig
-			bind:visualizationState
-			{shotTimerActive}
-			{shotTimerPhase}
-			{shotTimerSession}
-			{currentRound}
-			{autoNextCountdown}
-			{shotTimerStartTime}
-			{timerDisplayUpdate}
-			{trainingLogRefreshKey}
-			on:startCalibration={startCalibration}
-			on:clearCalibration={clearCalibration}
-			on:removeTarget={(e) => removeTarget(e.detail)}
-			on:renameTarget={(e) => renameTarget(e.detail.id, e.detail.name)}
-			on:resetSetup={() => {
-				stopCamera();
-				isSetupComplete = false;
-			}}
-			on:clearHits={clearHits}
-			on:resetZones={resetZonesToDefaults}
-			on:defineZones={startZoneCalibration}
-			on:startDrill={shotTimerSession.reps.length === 0 ? startSession : startDrill}
-			on:cancelDrill={cancelDrill}
-			on:nextRep={nextRep}
-			on:endSession={endSession}
-			on:export={exportShotPattern}
-			on:help={startOnboarding}
-			on:resetApp={resetApp}
-		/>
-	{/if}
-
-	<!-- Zone Settings Panel - Desktop (side panel) -->
-	{#if showZoneSettings}
-		<div
-			class="fixed top-0 right-0 z-[60] hidden h-full w-96 overflow-y-auto border-l border-border bg-card shadow-2xl md:block"
-		>
-			<div class="h-full p-6">
-				<ZoneSettingsPanel
-					bind:zones
-					mobile={false}
-					canCalibrate={isStreaming && targets.length > 0 && !calibrationMode}
-					on:defineZones={startZoneCalibration}
-					on:close={() => (showZoneSettings = false)}
-					on:reset={resetZonesToDefaults}
-				/>
-			</div>
+			</details>
 		</div>
-	{/if}
-
-	<!-- Shot Timer Panel - Desktop (side panel) -->
-	{#if showDrills}
-		<div
-			class="fixed top-0 z-50 hidden h-full w-96 overflow-y-auto border-l border-border bg-card shadow-2xl md:block"
-			style="right: {showZoneSettings ? '384px' : '0'}"
-		>
-			<div class="h-full p-6">
-				<DrillsPanel
-					mobile={false}
-					active={shotTimerActive}
-					phase={shotTimerPhase}
-					bind:config={shotTimerConfig}
-					session={shotTimerSession}
-					{currentRound}
-					{autoNextCountdown}
-					startTime={shotTimerStartTime}
-					{timerDisplayUpdate}
-					on:start={shotTimerSession.reps.length === 0 ? startSession : startDrill}
-					on:cancel={cancelDrill}
-					on:next={nextRep}
-					on:end={endSession}
-					on:close={() => (showDrills = false)}
-				/>
-			</div>
-		</div>
-	{/if}
-
-	<!-- Training Log Panel - Desktop (side panel) -->
-	{#if showTrainingLog}
-		<div
-			class="fixed top-0 z-50 hidden h-full w-96 overflow-y-auto border-l border-border bg-card shadow-2xl md:block"
-			style="right: {(showZoneSettings ? 384 : 0) + (showDrills ? 384 : 0)}px"
-		>
-			<div class="h-full p-6">
-				<TrainingLogPanel
-					mobile={false}
-					refreshKey={trainingLogRefreshKey}
-					on:close={() => (showTrainingLog = false)}
-				/>
-			</div>
-		</div>
-	{/if}
-
-	<!-- Shot Sequence Visualization Panel - Desktop (side panel) -->
-	{#if showVisualizationControls}
-		<div
-			class="fixed top-0 z-50 hidden h-full w-96 overflow-y-auto border-l border-border bg-card shadow-2xl md:block"
-			style="right: {(showZoneSettings ? 384 : 0) +
-				(showDrills ? 384 : 0) +
-				(showTrainingLog ? 384 : 0)}px"
-		>
-			<div class="h-full p-6">
-				<VisualizationPanel
-					mobile={false}
-					bind:visualizationState
-					{hits}
-					on:close={() => (showVisualizationControls = false)}
-					on:export={exportShotPattern}
-				/>
-			</div>
-		</div>
-	{/if}
-</div>
+	</div>
+</main>
 
 <style>
-	/* Mobile-specific styles */
-	.camera-feed {
-		width: 100%;
-		height: 100%;
-		position: relative;
+	.app-main {
+		max-width: 1440px;
+		padding: 25px 40px 32px;
+		margin: auto;
 	}
-
-	.camera-feed video,
-	.camera-feed canvas {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
+	.skip-link {
+		position: absolute;
+		left: 16px;
+		top: -80px;
+		padding: 12px;
+		background: white;
+		z-index: 100;
 	}
-
-	/* Status Badges */
-	.status-badge {
-		display: inline-block;
-		padding: 6px 12px;
-		border-radius: 20px;
-		font-size: 12px;
-		font-weight: 600;
-		background: rgba(0, 0, 0, 0.7);
-		color: white;
-		backdrop-filter: blur(10px);
+	.skip-link:focus {
+		top: 12px;
 	}
-
-	.status-badge.success {
-		background: rgba(34, 197, 94, 0.9);
-	}
-
-	.status-badge.warning {
-		background: rgba(251, 191, 36, 0.9);
-	}
-
-	.status-badge.active {
-		background: rgba(59, 130, 246, 0.9);
-		animation: pulse 2s ease-in-out infinite;
-	}
-
-	.status-badge.info {
-		background: rgba(99, 102, 241, 0.9);
-	}
-
-	.status-badge.zoom-reset {
-		background: rgba(139, 92, 246, 0.9);
-		cursor: pointer;
-		pointer-events: auto;
-	}
-
-	.status-badge.zoom-reset:active {
-		transform: scale(0.95);
-	}
-
-	@keyframes pulse {
-		0%,
-		100% {
-			opacity: 1;
-		}
-		50% {
-			opacity: 0.7;
-		}
-	}
-
-	/* Floating Action Buttons */
-	.fab {
-		width: 56px;
-		height: 56px;
-		border-radius: 50%;
-		border: none;
-		font-size: 24px;
-		cursor: pointer;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-		transition:
-			transform 0.2s,
-			box-shadow 0.2s;
+	.page-heading {
 		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.fab:active {
-		transform: scale(0.95);
-	}
-
-	.fab.primary {
-		background: #3b82f6;
-		color: white;
-	}
-
-	.fab.secondary {
-		background: #8b5cf6;
-		color: white;
-	}
-
-	/* Quick Actions Grid */
-	.quick-actions-grid {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 12px;
-		margin-bottom: 16px;
-	}
-
-	.action-btn {
-		padding: 16px;
-		border: none;
-		border-radius: 8px;
-		font-size: 14px;
-		font-weight: 600;
-		cursor: pointer;
-		transition:
-			transform 0.1s,
-			opacity 0.2s;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 4px;
-	}
-
-	.action-btn:active {
-		transform: scale(0.98);
-	}
-
-	.action-btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.action-btn.primary {
-		background: #3b82f6;
-		color: white;
-	}
-
-	.action-btn.secondary {
-		background: #64748b;
-		color: white;
-	}
-
-	.action-btn.success {
-		background: #22c55e;
-		color: white;
-	}
-
-	.action-btn.info {
-		background: #8b5cf6;
-		color: white;
-	}
-
-	.action-btn.warning {
-		background: #f59e0b;
-		color: white;
-	}
-
-	.action-btn.danger {
-		background: #ef4444;
-		color: white;
-	}
-
-	/* Full Controls Container */
-	.full-controls-container {
-		display: flex;
-		flex-direction: column;
+		justify-content: space-between;
+		align-items: end;
 		gap: 24px;
+		margin-bottom: 32px;
 	}
-
-	.mobile-tablet-only {
-		display: block;
+	.page-heading h1 {
+		font-size: clamp(2rem, 3.2vw, 2.9rem);
+		letter-spacing: -0.025em;
 	}
-
-	@media (min-width: 1024px) {
-		.mobile-tablet-only {
+	.page-heading p {
+		margin-top: 9px;
+		color: #5b6d80;
+		font-size: 0.95rem;
+	}
+	.local-label {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		color: #5b6d80;
+		font-size: 0.75rem;
+		padding-bottom: 3px;
+		white-space: nowrap;
+	}
+	.setup-progress {
+		display: flex;
+		max-width: 760px;
+		margin-bottom: 25px;
+		gap: 8px;
+	}
+	.setup-progress button {
+		display: flex;
+		align-items: center;
+		gap: 9px;
+		padding: 10px 20px 14px 0;
+		min-height: 52px;
+		font-size: 0.85rem;
+		color: #5b6d80;
+		border-bottom: 2px solid #d9e1eb;
+		flex: 1;
+	}
+	.setup-progress button.active {
+		border-color: #315de3;
+		color: #315de3;
+		font-weight: 600;
+	}
+	.setup-progress button:disabled {
+		opacity: 0.65;
+	}
+	.setup-progress button.active:disabled {
+		opacity: 1;
+	}
+	.step-number {
+		display: grid;
+		place-items: center;
+		width: 25px;
+		height: 25px;
+		border-radius: 50%;
+		border: 1px solid #bfcbd9;
+		font-size: 0.75rem;
+		flex-shrink: 0;
+	}
+	.active .step-number {
+		color: white;
+		background: #315de3;
+		border-color: #315de3;
+	}
+	.done .step-number {
+		background: #e1ede7;
+		color: #237651;
+		border-color: #c4ddcf;
+	}
+	.workspace {
+		display: grid;
+		grid-template-columns: minmax(0, 1.65fr) minmax(320px, 1fr);
+		gap: 28px;
+		align-items: start;
+	}
+	.camera-column {
+		min-width: 0;
+	}
+	.control-column {
+		background: white;
+		padding: 28px;
+		border-radius: 14px;
+		border: 1px solid #d9e1eb;
+		min-width: 0;
+	}
+	.camera-note {
+		color: #5b6d80;
+		font-size: 0.8rem;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 14px 2px;
+	}
+	.step-icon {
+		display: grid;
+		place-items: center;
+		width: 49px;
+		height: 49px;
+		background: #eaf0ff;
+		color: #315de3;
+		border-radius: 12px;
+	}
+	.panel-intro {
+		margin-top: 11px;
+		font-size: 0.93rem;
+	}
+	.setup-instructions {
+		list-style: none;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 18px;
+		margin: 0;
+	}
+	.setup-instructions li {
+		position: relative;
+		padding-left: 0;
+	}
+	.setup-instructions li span {
+		font-size: 0.9rem;
+		font-weight: 600;
+	}
+	.setup-instructions p {
+		font-size: 0.82rem;
+		color: #5b6d80;
+		margin-top: 3px;
+	}
+	.text-button {
+		color: #315de3;
+		font-size: 0.85rem;
+		min-height: 44px;
+		text-align: center;
+		text-decoration: underline;
+		text-underline-offset: 4px;
+	}
+	.target-list {
+		border-top: 1px solid #d9e1eb;
+	}
+	.target-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		border-bottom: 1px solid #d9e1eb;
+		padding: 6px 0;
+	}
+	.target-row > :global(svg) {
+		color: #315de3;
+	}
+	.target-row input {
+		border-color: transparent;
+		min-width: 0;
+		padding-left: 4px;
+		font-size: 0.9rem;
+	}
+	.target-row input:hover,
+	.target-row input:focus {
+		border-color: #c4cfdd;
+	}
+	.check-instruction {
+		display: flex;
+		flex-direction: column;
+		gap: 11px;
+	}
+	.check-copy {
+		margin-top: 7px;
+	}
+	.detection-count {
+		display: flex;
+		align-items: center;
+		gap: 18px;
+		background: #f1f4f8;
+		border-radius: 8px;
+		padding: 16px;
+	}
+	.detection-count > span {
+		font-family: 'Barlow Semi Condensed', sans-serif;
+		font-size: 3.2rem;
+		line-height: 1;
+		color: #315de3;
+		font-weight: 500;
+	}
+	.detection-count strong {
+		font-size: 0.85rem;
+	}
+	.detection-count p {
+		color: #5b6d80;
+		font-size: 0.75rem;
+		margin-top: 3px;
+	}
+	.camera-footnote {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 14px 2px;
+		font-size: 0.8rem;
+		color: #5b6d80;
+	}
+	.camera-footnote span {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.camera-footnote button {
+		min-height: 40px;
+		text-decoration: underline;
+		text-underline-offset: 3px;
+		color: #315de3;
+	}
+	.below-camera {
+		background: white;
+		border: 1px solid #d9e1eb;
+		border-radius: 10px;
+		padding: 5px 18px 14px;
+	}
+	.practice-footer {
+		padding-top: 36px;
+		display: flex;
+		justify-content: space-between;
+		gap: 20px;
+		align-items: start;
+		color: #5b6d80;
+		font-size: 0.75rem;
+	}
+	.practice-footer > span {
+		padding-top: 15px;
+	}
+	.utility-menu {
+		min-width: 160px;
+	}
+	.utility-menu summary {
+		gap: 20px;
+	}
+	.utility-content {
+		background: white;
+		border: 1px solid #d9e1eb;
+		border-radius: 8px;
+		padding: 16px;
+		font-size: 0.85rem;
+		max-width: 320px;
+	}
+	.help-strip {
+		display: flex;
+		gap: 20px;
+		padding: 20px;
+		border-left: 3px solid #315de3;
+		background: #eaf0ff;
+		margin-bottom: 24px;
+	}
+	.help-strip p {
+		margin-top: 8px;
+		font-size: 0.9rem;
+	}
+	.notice {
+		position: relative;
+		margin-bottom: 20px;
+		padding-right: 44px;
+	}
+	.notice-dismiss {
+		position: absolute;
+		top: 3px;
+		right: 3px;
+		min-width: 40px;
+		min-height: 40px;
+		display: grid;
+		place-items: center;
+	}
+	.screen-hidden {
+		display: none;
+	}
+	@media (min-width: 1200px) {
+		.control-column {
+			padding: 32px;
+		}
+		.workspace {
+			gap: 36px;
+		}
+	}
+	@media (max-width: 900px) {
+		.app-main {
+			padding: 20px 24px 28px;
+		}
+		.local-label {
 			display: none;
 		}
+		.workspace {
+			grid-template-columns: minmax(0, 1.15fr) minmax(300px, 1fr);
+			gap: 20px;
+		}
+		.control-column {
+			padding: 22px;
+		}
 	}
-
-	/* Ensure desktop layout has proper styling */
-	:global(.desktop-layout) {
-		background: #0f172a;
-		min-height: 100vh;
+	@media (max-width: 700px) and (orientation: portrait), (max-width: 600px) {
+		.app-main {
+			padding: 10px 18px 24px;
+		}
+		.page-heading {
+			margin-bottom: 20px;
+		}
+		.page-heading h1 {
+			font-size: 2rem;
+		}
+		.page-heading p {
+			font-size: 0.85rem;
+			margin-top: 7px;
+		}
+		.workspace {
+			grid-template-columns: 1fr;
+			gap: 10px;
+		}
+		.control-column {
+			padding: 24px 20px;
+		}
+		.camera-note {
+			padding: 10px 2px;
+			font-size: 0.73rem;
+		}
+		.camera-setup .camera-note,
+		.camera-setup .step-icon,
+		.camera-setup .setup-instructions {
+			display: none;
+		}
+		.camera-setup .camera-column :global(.camera-surface) {
+			aspect-ratio: 16/8;
+		}
+		.camera-setup .stack {
+			gap: 16px;
+		}
+		.setup-progress {
+			gap: 6px;
+			margin-bottom: 18px;
+		}
+		.setup-progress button {
+			gap: 6px;
+			padding: 7px 0 10px;
+			font-size: 0.75rem;
+			min-height: 44px;
+		}
+		.step-number {
+			width: 21px;
+			height: 21px;
+			font-size: 0.7rem;
+		}
+		.practice-footer {
+			padding-top: 20px;
+			flex-direction: column;
+			gap: 5px;
+		}
+		.utility-menu {
+			width: 100%;
+		}
+		.page-heading > .btn {
+			font-size: 0.8rem;
+			min-height: 42px;
+			padding: 8px 10px;
+		}
 	}
-
-	:global(.desktop-layout) .min-h-screen {
-		min-height: auto;
+	@media (max-height: 550px) and (orientation: landscape) {
+		.app-main {
+			padding-top: 0;
+		}
+		.page-heading {
+			display: none;
+		}
+		.setup-progress {
+			margin-bottom: 12px;
+		}
+		.workspace {
+			grid-template-columns: minmax(0, 1.2fr) minmax(270px, 1fr);
+			gap: 16px;
+		}
+		.control-column {
+			padding: 20px;
+		}
+		.camera-column {
+			position: sticky;
+			top: 12px;
+		}
 	}
-	canvas {
-		image-rendering: pixelated;
+	@media (max-width: 700px) and (orientation: portrait) {
+		.training-focus .page-heading,
+		.training-focus .setup-progress,
+		.training-focus .camera-footnote,
+		.training-focus .practice-footer {
+			display: none;
+		}
+		.training-focus .camera-column :global(.camera-surface) {
+			aspect-ratio: 16/8;
+		}
+		.training-focus .control-column {
+			padding: 16px;
+		}
+	}
+	@media (max-height: 550px) and (orientation: landscape) {
+		.training-focus .setup-progress,
+		.training-focus .camera-footnote,
+		.training-focus .practice-footer {
+			display: none;
+		}
+		.training-focus .control-column {
+			padding: 12px;
+		}
+		.camera-setup .step-icon,
+		.camera-setup .setup-instructions {
+			display: none;
+		}
+		.camera-setup .stack {
+			gap: 12px;
+		}
+		.camera-setup .panel-intro {
+			font-size: 0.82rem;
+		}
+		.camera-setup h2 {
+			font-size: 1.8rem;
+		}
+		.camera-column :global(.camera-surface) {
+			aspect-ratio: auto;
+			height: clamp(130px, calc(100dvh - 230px), 240px);
+		}
 	}
 </style>

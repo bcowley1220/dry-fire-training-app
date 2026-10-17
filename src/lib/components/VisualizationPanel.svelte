@@ -1,5 +1,6 @@
 <script>
 	import { createEventDispatcher } from 'svelte';
+	import Icon from './Icon.svelte';
 
 	export let mobile = false;
 	export let visualizationState;
@@ -33,123 +34,94 @@
 	}
 </script>
 
-<div class={mobile ? 'mb-4 rounded-lg bg-secondary/50 p-4' : ''}>
-	<div class="mb-4 flex items-center justify-between {mobile ? '' : 'mb-6'}">
-		<h3 class={mobile ? 'text-lg font-semibold' : 'text-xl font-semibold'}>
-			Shot Sequence Visualization
-		</h3>
-		<button
-			on:click={() => dispatch('close')}
-			class="rounded-lg bg-secondary px-3 py-1.5 text-sm font-semibold transition-colors hover:bg-secondary/80"
-			aria-label="Close sequence controls"
-		>
-			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					stroke-width="2"
-					d="M6 18L18 6M6 6l12 12"
-				/>
-			</svg>
-		</button>
+<div class="shot-controls" class:compact={mobile}>
+	<label class="check-row"
+		><input type="checkbox" bind:checked={visualizationState.showShotNumbers} /><span
+			>Number each shot</span
+		></label
+	>
+	<label class="check-row"
+		><input type="checkbox" bind:checked={visualizationState.showSequenceLines} /><span
+			>Connect shots in order</span
+		></label
+	>
+	<div class="line-color">
+		<label for="line-color-{mobile}">Connecting line color</label><input
+			id="line-color-{mobile}"
+			type="color"
+			bind:value={visualizationState.lineColor}
+		/>
 	</div>
-
-	<div class="space-y-4">
-		<!-- Toggle Controls -->
-		<div class="flex items-center gap-3">
-			<input
-				id="show-shot-numbers-{mobile ? 'mobile' : 'desktop'}"
-				type="checkbox"
-				bind:checked={visualizationState.showShotNumbers}
-				class="h-5 w-5"
+	{#if hits.length}<div class="field">
+			<label for="replay-{mobile}"
+				>Replay <span class="muted"
+					>{visualizationState.currentReplayShot
+						? `Shot ${visualizationState.currentReplayShot} of ${hits.length}`
+						: 'All shots'}</span
+				></label
+			><input
+				id="replay-{mobile}"
+				type="range"
+				min="0"
+				max={hits.length}
+				value={visualizationState.currentReplayShot}
+				on:input={(event) => {
+					const value = Number(event.target.value);
+					visualizationState.currentReplayShot = value;
+					visualizationState.showAllShots = value === 0;
+				}}
 			/>
-			<label for="show-shot-numbers-{mobile ? 'mobile' : 'desktop'}" class="cursor-pointer">
-				Show Shot Numbers
-			</label>
-		</div>
-
-		<div class="flex items-center gap-3">
-			<input
-				id="show-sequence-lines-{mobile ? 'mobile' : 'desktop'}"
-				type="checkbox"
-				bind:checked={visualizationState.showSequenceLines}
-				class="h-5 w-5"
-			/>
-			<label for="show-sequence-lines-{mobile ? 'mobile' : 'desktop'}" class="cursor-pointer">
-				Show Sequence Lines
-			</label>
-		</div>
-
-		<!-- Line Color Picker -->
-		<div class="flex items-center gap-3">
-			<label for="line-color-{mobile ? 'mobile' : 'desktop'}" class="text-sm">Line Color:</label>
-			<input
-				id="line-color-{mobile ? 'mobile' : 'desktop'}"
-				type="color"
-				bind:value={visualizationState.lineColor}
-				class="h-8 w-16 cursor-pointer rounded border border-border"
-			/>
-		</div>
-
-		<!-- Replay Mode Controls -->
-		{#if hits.length > 0}
-			<div class="border-t border-border pt-4">
-				<label for="replay-slider-{mobile ? 'mobile' : 'desktop'}" class="mb-2 block">
-					Replay Mode:
-				</label>
-				<input
-					id="replay-slider-{mobile ? 'mobile' : 'desktop'}"
-					type="range"
-					min="0"
-					max={hits.length}
-					value={visualizationState.currentReplayShot}
-					on:input={(e) => {
-						const val = parseInt(e.target.value);
-						visualizationState.currentReplayShot = val;
-						visualizationState.showAllShots = val === 0;
-					}}
-					class="w-full"
-				/>
-				<div class="mt-1 text-center text-sm text-muted-foreground">
-					{visualizationState.currentReplayShot === 0
-						? 'All Shots'
-						: `Shot ${visualizationState.currentReplayShot} of ${hits.length}`}
-				</div>
-			</div>
-		{/if}
-
-		<!-- Shot Group Analysis -->
-		{#if hits.length >= 2}
-			{@const grouping = calculateShotGrouping(hits)}
-			{#if grouping}
-				<div class="border-t border-border pt-4">
-					<h4 class="text-md mb-3 font-semibold">Shot Group Analysis</h4>
-					<div class="space-y-2">
-						<div class="flex justify-between text-sm">
-							<span class="text-muted-foreground">Group Size (avg):</span>
-							<span class="font-semibold">{grouping.groupSize}</span>
-						</div>
-						<div class="flex justify-between text-sm">
-							<span class="text-muted-foreground">Max Spread:</span>
-							<span class="font-semibold">{grouping.maxSpread}px</span>
-						</div>
-						<div class="flex justify-between text-sm">
-							<span class="text-muted-foreground">Total Shots:</span>
-							<span class="font-semibold">{hits.length}</span>
-						</div>
-					</div>
-				</div>
-			{/if}
-		{/if}
-
-		<!-- Export Button -->
-		{#if hits.length > 0}
-			<button
-				on:click={() => dispatch('export')}
-				class="w-full rounded-lg bg-secondary px-4 py-2 text-sm font-semibold transition-colors hover:bg-secondary/80"
+			<p class="small muted">Move the slider to review shots in sequence.</p>
+		</div>{/if}
+	{#if hits.length >= 2}{@const grouping = calculateShotGrouping(hits)}
+		<div class="group-analysis">
+			<span>Average group diameter<strong>{grouping.groupSize}</strong></span><span
+				>Maximum radial spread<strong>{grouping.maxSpread}px</strong></span
 			>
-				📸 Export Shot Pattern
-			</button>
-		{/if}
-	</div>
+		</div>
+		<p class="small muted">Measured in camera pixels, not physical distance.</p>{/if}
+	<button class="btn btn-full" disabled={!hits.length} on:click={() => dispatch('export')}
+		><Icon name="camera" size={17} />Export shot image</button
+	>
 </div>
+
+<style>
+	.shot-controls {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		font-size: 0.85rem;
+	}
+	.line-color {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		min-height: 44px;
+	}
+	.line-color input {
+		width: 54px;
+		height: 36px;
+		border: 1px solid #c4cfdd;
+		border-radius: 5px;
+		background: white;
+		padding: 3px;
+	}
+	.group-analysis {
+		display: flex;
+		gap: 20px;
+		border-top: 1px solid #d9e1eb;
+		padding-top: 18px;
+		color: #5b6d80;
+		font-size: 0.75rem;
+	}
+	.group-analysis strong {
+		display: block;
+		color: #18324b;
+		font-size: 1rem;
+		margin-top: 5px;
+	}
+	.compact {
+		gap: 10px;
+	}
+</style>

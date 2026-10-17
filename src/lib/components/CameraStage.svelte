@@ -2,19 +2,19 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { createEventDispatcher } from 'svelte';
+	import Icon from './Icon.svelte';
 
 	let {
+		starting = false,
 		videoElement = $bindable(null),
 		canvasElement = $bindable(null),
 		stream = null,
 		isStreaming = false,
-		isSetupComplete = false,
 		calibrationMode = false,
 		calibrationPoints = [],
 		hasFrozenCalibrationFrame = false,
 		zoneCalibrationMode = null,
 		zoneCalibrationPoints = [],
-		zones = {},
 		targets = [],
 		hasBackground = false,
 		waitingForClear = false,
@@ -335,349 +335,468 @@
 			constrainPan();
 		}
 	}
+
+	function handleViewKey(event) {
+		if (event.key === 'Enter' || event.key === ' ') {
+			event.preventDefault();
+			showZoomControls = !showZoomControls;
+		}
+		if (['+', '=', '-', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key))
+			event.preventDefault();
+		if (event.key === '+' || event.key === '=')
+			handleSliderZoom({
+				currentTarget: { value: Math.min(zoomCapabilities.max, currentZoomLevel + 0.2) }
+			});
+		if (event.key === '-')
+			handleSliderZoom({
+				currentTarget: { value: Math.max(zoomCapabilities.min, currentZoomLevel - 0.2) }
+			});
+		if (event.key === 'ArrowLeft') cameraPanX += 20;
+		if (event.key === 'ArrowRight') cameraPanX -= 20;
+		if (event.key === 'ArrowUp') cameraPanY += 20;
+		if (event.key === 'ArrowDown') cameraPanY -= 20;
+		constrainPan();
+	}
+
+	let keyboardX = $state(0.5);
+	let keyboardY = $state(0.5);
+	function handleCalibrationKey(event) {
+		if (!canvasElement) return;
+		if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', ' '].includes(event.key))
+			event.preventDefault();
+		if (event.key === 'ArrowLeft') keyboardX = Math.max(0, keyboardX - 0.02);
+		if (event.key === 'ArrowRight') keyboardX = Math.min(1, keyboardX + 0.02);
+		if (event.key === 'ArrowUp') keyboardY = Math.max(0, keyboardY - 0.02);
+		if (event.key === 'ArrowDown') keyboardY = Math.min(1, keyboardY + 0.02);
+		if (event.key === 'Enter' || event.key === ' ')
+			dispatch('canvasClick', {
+				x: keyboardX * canvasElement.width,
+				y: keyboardY * canvasElement.height,
+				event
+			});
+	}
 </script>
 
-<div
-	id="camera-viewport"
-	class="camera-viewport-container relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-border bg-card"
->
-	<!-- Camera Feed -->
-	<div class="relative h-full w-full overflow-hidden rounded-lg bg-black shadow-lg">
-		<video
-			bind:this={videoElement}
-			autoplay
-			playsinline
-			muted
-			class="hidden h-full w-full object-contain"
-		></video>
+<div id="camera-viewport" class="camera-viewport-container">
+	<div class="camera-caption">
+		<span class="camera-state"
+			><span class:connected={isStreaming}></span>{isStreaming
+				? calibrationMode
+					? 'Frame paused for setup'
+					: 'Camera live'
+				: 'Camera preview'}</span
+		><span
+			>{targets.length
+				? `${targets.length} target${targets.length === 1 ? '' : 's'}`
+				: 'Your space, in view'}</span
+		>
+	</div>
+	<div class="camera-surface">
+		<video bind:this={videoElement} autoplay playsinline muted class="camera-source"></video>
 		<div
 			bind:this={canvasWrapper}
 			class="canvas-wrapper"
+			role="button"
+			aria-disabled={!isStreaming}
+			tabindex={isStreaming && !calibrationMode && !zoneCalibrationMode ? 0 : -1}
+			onkeydown={handleViewKey}
+			aria-label="Camera view. Press Enter for zoom controls. Use plus and minus to zoom, and arrow keys to pan."
 			style="transform: scale({cameraZoom}) translate({cameraPanX / cameraZoom}px, {cameraPanY /
 				cameraZoom}px); transform-origin: 0 0; width: 100%; height: 100%; overflow: hidden;"
-			on:mousedown={handleMouseDown}
-			on:mousemove={handleMouseMove}
-			on:mouseup={handleMouseUp}
-			on:mouseleave={handleMouseLeave}
-			on:wheel={handleZoom}
+			onmousedown={handleMouseDown}
+			onmousemove={handleMouseMove}
+			onmouseup={handleMouseUp}
+			onmouseleave={handleMouseLeave}
+			onwheel={handleZoom}
 		>
-			<canvas
-				bind:this={canvasElement}
-				class="h-full w-full object-contain"
-				style="touch-action: none; display: block;"
-			></canvas>
+			<canvas bind:this={canvasElement} class="camera-canvas"></canvas>
 		</div>
 		{#if calibrationMode || zoneCalibrationMode}
 			<div
-				class="absolute inset-0 z-10 cursor-crosshair"
-				on:click={handleCanvasClick}
-				on:touchstart={handleCanvasClick}
-				on:touchend={(e) => e.preventDefault()}
-				on:keydown={(e) => e.key === 'Enter' && handleCanvasClick(e)}
+				class="calibration-input"
+				onclick={handleCanvasClick}
+				ontouchstart={handleCanvasClick}
+				ontouchend={(event) => event.preventDefault()}
+				onkeydown={handleCalibrationKey}
 				role="button"
 				tabindex="0"
-				style="touch-action: none;"
-			></div>
-		{/if}
-		{#if calibrationMode}
-			<div class="absolute top-3 right-3 z-20 flex flex-wrap justify-end gap-2">
-				{#if hasFrozenCalibrationFrame}
-					<div
-						class="glass flex items-center rounded-lg border border-yellow-400/30 px-3 py-2 text-xs font-semibold text-yellow-300"
-					>
-						Frozen frame
-					</div>
-				{/if}
-				<button
-					on:click={() => dispatch('retakeCalibrationFrame')}
-					class="glass rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-foreground hover:bg-secondary/70"
-				>
-					Retake
-				</button>
-				<button
-					on:click={() => dispatch('undoCalibrationPoint')}
-					disabled={calibrationPoints.length === 0}
-					class="glass rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-foreground hover:bg-secondary/70 disabled:cursor-not-allowed disabled:opacity-50"
-				>
-					Undo
-				</button>
-				<button
-					on:click={() => dispatch('cancelCalibration')}
-					class="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700"
-				>
-					Cancel
-				</button>
-			</div>
-			<div
-				class="pointer-events-none absolute bottom-4 left-1/2 z-20 w-[75%] -translate-x-1/2 transform rounded bg-yellow-500/70 px-4 py-2 text-center font-semibold text-black backdrop-blur-sm"
+				aria-label="Select target corner. Use arrow keys to move and Enter to select."
 			>
-				{#if calibrationPoints.length === 0}
-					Tap corners CLOCKWISE: Start with top-left corner
-				{:else if calibrationPoints.length === 1}
-					Tap top-right corner (clockwise)
-				{:else if calibrationPoints.length === 2}
-					Tap bottom-right corner (clockwise)
-				{:else if calibrationPoints.length === 3}
-					Tap bottom-left corner (clockwise) - last one!
-				{/if}
-				<div class="mt-1 text-xs font-medium">
-					{calibrationPoints.length}/4 points selected
-				</div>
+				<span class="keyboard-cursor" style="left:{keyboardX * 100}%;top:{keyboardY * 100}%"></span>
 			</div>
-		{/if}
-		{#if zoneCalibrationMode}
-			<div
-				class="absolute bottom-4 left-1/2 w-[75%] -translate-x-1/2 transform rounded px-4 py-2 text-center font-semibold backdrop-blur-sm"
-				style="background-color: {zones[zoneCalibrationMode].color}80; color: #000;"
-			>
-				{#if zoneCalibrationPoints.length === 0}
-					Define {zoneCalibrationMode}-zone: Tap corners CLOCKWISE (start top-left)
-				{:else if zoneCalibrationPoints.length === 1}
-					{zoneCalibrationMode}-zone: Tap top-right corner (clockwise)
-				{:else if zoneCalibrationPoints.length === 2}
-					{zoneCalibrationMode}-zone: Tap bottom-right corner (clockwise)
-				{:else if zoneCalibrationPoints.length === 3}
-					{zoneCalibrationMode}-zone: Tap bottom-left corner (clockwise) - last one!
-				{/if}
-			</div>
-			<button
-				on:click={() => dispatch('cancelZoneCalibration')}
-				class="absolute top-4 right-4 z-20 rounded bg-red-600 px-4 py-2 font-semibold hover:bg-red-700"
-			>
-				Cancel
-			</button>
 		{/if}
 		{#if !isStreaming}
-			<div class="absolute inset-0 flex items-center justify-center bg-card">
-				<div class="space-y-4 p-8 text-center">
-					<div
-						class="mx-auto flex h-16 w-16 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground/30 bg-secondary/50"
-					>
-						<svg
-							class="h-8 w-8 text-muted-foreground"
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-							/>
-						</svg>
-					</div>
-					<div>
-						<p class="text-sm font-medium text-muted-foreground">Camera inactive</p>
-						<p class="mt-1 text-xs text-muted-foreground/60">Tap Start to begin</p>
-					</div>
-					<button
-						on:click={() => dispatch('startCamera')}
-						class="mx-auto mt-4 flex items-center gap-2 rounded-lg bg-primary px-6 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-					>
-						<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-							/>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-							/>
-						</svg>
-						Start
-					</button>
-				</div>
+			<div class="camera-empty">
+				<svg class="target-illustration" viewBox="0 0 280 180" fill="none" aria-hidden="true"
+					><path
+						d="M26 48V24h28m172 0h28v24M26 132v24h28m172 0h28v-24"
+						stroke="#75899b"
+						stroke-width="1.5"
+					/><path
+						d="M116 25h48l28 30v74l-28 29h-48l-28-29V55l28-30Z"
+						fill="#293e50"
+						stroke="#91a5b5"
+						stroke-width="1.5"
+					/><path d="M125 48h30l16 18v52l-16 18h-30l-16-18V66l16-18Z" stroke="#9eb3c4" /><rect
+						x="126"
+						y="71"
+						width="28"
+						height="42"
+						rx="3"
+						stroke="#c6d3dc"
+					/><path d="M140 79v26m-13-13h26" stroke="#c6d3dc" /><circle
+						cx="146"
+						cy="85"
+						r="3"
+						fill="#83a5ff"
+					/><path d="M61 90h13m132 0h13" stroke="#75899b" /></svg
+				>
+				<strong
+					>{starting ? 'Connecting to your camera…' : 'A little space. A little practice.'}</strong
+				>
+				<p>
+					{starting
+						? 'Allow camera access in your browser to continue.'
+						: 'Your camera view will appear here.'}
+				</p>
 			</div>
 		{/if}
-
-		<!-- Camera Overlay Controls (when streaming) -->
-		{#if isStreaming && isSetupComplete}
-			<!-- Calibrated Badge -->
-			{#if targets.length > 0}
-				<div
-					class="glass absolute top-3 left-3 flex items-center gap-2 rounded-full border border-success/20 px-3 py-1.5 text-xs"
-				>
-					<div class="pulse-active h-2 w-2 rounded-full bg-success"></div>
-					<span class="font-medium text-success"
-						>{targets.length} Target{targets.length > 1 ? 's' : ''}</span
-					>
-				</div>
-			{/if}
-
-			<!-- Malfunction Overlay -->
-			{#if waitingForClear}
-				<div class="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
-					<div
-						class="-rotate-6 transform animate-pulse rounded-xl border-4 border-white bg-red-600/90 px-8 py-6 text-4xl font-black text-white shadow-2xl backdrop-blur-sm"
-					>
-						MALFUNCTION!
-					</div>
-				</div>
-			{/if}
-
-			<!-- Call-Out Overlay -->
-			{#if callOutTarget}
-				<div class="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
-					<div
-						class="rotate-0 transform animate-pulse rounded-xl border-4 border-white bg-blue-600/90 px-8 py-6 text-center text-4xl font-black text-white shadow-2xl backdrop-blur-sm"
-					>
-						{callOutTarget}
-					</div>
-				</div>
-			{/if}
-
-			<!-- Top Right Controls -->
-			{#if !calibrationMode && !zoneCalibrationMode}
-				<div class="absolute top-3 right-3 z-20 flex gap-2">
-					<!-- Background Button -->
-					<button
-						id="btn-set-background"
-						on:click={() => dispatch('toggleBackground')}
-						class="glass rounded-lg border-0 p-2 transition-colors hover:bg-secondary/50 {hasBackground
-							? 'bg-green-400/10 text-green-400'
-							: ''}"
-						aria-label="Set Background"
-					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							class="h-4 w-4"
-							fill="none"
-							viewBox="0 0 24 24"
-							stroke="currentColor"
-							stroke-width="2"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
-							/>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
-							/>
-						</svg>
-					</button>
-
-					<!-- Fullscreen Button -->
-					<button
-						on:click={() => dispatch('toggleFullscreen')}
-						class="glass rounded-lg border-0 p-2 transition-colors hover:bg-secondary/50"
-						aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-					>
-						{#if isFullscreen}
-							<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M6 18L18 6M6 6l12 12M4 8h4m0 0v4m0-4l5 5m7-5h-4m0 0v4m0-4l-5 5M4 16h4m0 0v4m0-4l5-5m7 5h-4m0 0v4m0-4l-5-5"
-								/>
-							</svg>
-						{:else}
-							<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
-								/>
-							</svg>
-						{/if}
-					</button>
-				</div>
-			{/if}
-
-			<!-- Stop Button - Top Left -->
-			<div class="absolute top-3 left-3 z-10" class:hidden={calibrationMode || zoneCalibrationMode}>
-				<button
-					on:click={() => dispatch('stopCamera')}
-					class="glass flex items-center gap-1.5 rounded-lg border-0 bg-destructive/20 px-4 py-2 text-sm font-medium text-destructive shadow-lg backdrop-blur-xl hover:bg-destructive/30"
-				>
-					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-						/>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M9 10h6v4H9z"
-						/>
-					</svg>
-					Stop
-				</button>
-			</div>
-
-			<!-- Zoom Slider -->
-			<div class="absolute right-4 bottom-20 z-20 flex flex-col items-end gap-2">
-				{#if showZoomControls}
-					<div
-						class="animate-fade-in flex items-center gap-2 rounded-full border border-white/10 bg-black/60 px-3 py-2 shadow-lg backdrop-blur-md"
-					>
-						{#if currentZoomLevel > 1}
-							<button
-								class="px-1 text-xs font-medium text-white/80 hover:text-white"
-								on:click={() => {
-									if (hasHardwareZoom && stream) {
-										const track = stream.getVideoTracks()[0];
-										if (track) track.applyConstraints({ advanced: [{ zoom: 1 }] });
-										currentZoomLevel = 1;
-									} else {
-										cameraZoom = 1;
-										cameraPanX = 0;
-										cameraPanY = 0;
-										currentZoomLevel = 1;
-									}
-								}}>Reset</button
-							>
-							<div class="mx-1 h-4 w-px bg-white/20"></div>
-						{/if}
-						<span class="w-8 text-right text-xs font-medium text-white/80"
-							>{currentZoomLevel.toFixed(1)}x</span
-						>
-						<input
-							type="range"
-							min={zoomCapabilities.min}
-							max={zoomCapabilities.max}
-							step={zoomCapabilities.step}
-							value={currentZoomLevel}
-							on:input={handleSliderZoom}
-							class="h-1.5 w-24 cursor-pointer appearance-none rounded-lg bg-white/20 accent-primary"
-						/>
-					</div>
-				{/if}
-				<button
-					on:click={() => (showZoomControls = !showZoomControls)}
-					class="glass rounded-full border-0 bg-black/60 p-3 shadow-lg backdrop-blur-md transition-all hover:bg-black/80 {showZoomControls
-						? 'text-primary'
-						: 'text-white'}"
-					aria-label="Toggle Zoom Controls"
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-5 w-5"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-						stroke-width="2"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"
-						/>
-					</svg>
-				</button>
-			</div>
+		{#if isStreaming && !calibrationMode && !zoneCalibrationMode}
+			{#if waitingForClear || callOutTarget}<div class="camera-callout">
+					{waitingForClear ? 'Clear and fire again' : callOutTarget}
+				</div>{/if}
 		{/if}
+		{#if isStreaming && (calibrationMode || zoneCalibrationMode)}<div class="frame-badge">
+				{hasFrozenCalibrationFrame
+					? 'Frozen frame'
+					: zoneCalibrationMode
+						? `${zoneCalibrationMode} zone`
+						: 'Select corners'}
+			</div>{/if}
 	</div>
+	{#if calibrationMode || zoneCalibrationMode}
+		<div class="calibration-guidance" aria-live="polite">
+			<span class="corner-progress"
+				>{(zoneCalibrationMode ? zoneCalibrationPoints.length : calibrationPoints.length) + 1}<small
+					>/4</small
+				></span
+			>
+			<div>
+				<strong
+					>{zoneCalibrationMode ? `${zoneCalibrationMode} zone: ` : ''}Tap the {[
+						'top-left',
+						'top-right',
+						'bottom-right',
+						'bottom-left'
+					][zoneCalibrationMode ? zoneCalibrationPoints.length : calibrationPoints.length]} corner</strong
+				>
+				<p>
+					{hasFrozenCalibrationFrame
+						? 'The image is paused. Your camera can stay in place.'
+						: 'Work clockwise around the area you want to mark.'}
+				</p>
+			</div>
+		</div>
+		<div class="camera-toolbar calibration-toolbar">
+			{#if calibrationMode}<button class="btn" onclick={() => dispatch('retakeCalibrationFrame')}
+					><Icon name="refresh" size={17} />Retake</button
+				><button
+					class="btn"
+					disabled={!calibrationPoints.length}
+					onclick={() => dispatch('undoCalibrationPoint')}
+					><Icon name="undo" size={17} />Undo</button
+				>{/if}
+			<button
+				class="btn btn-quiet"
+				onclick={() =>
+					dispatch(zoneCalibrationMode ? 'cancelZoneCalibration' : 'cancelCalibration')}
+				>Cancel</button
+			>
+			<button
+				class="icon-button expand-button"
+				aria-label={isFullscreen ? 'Exit fullscreen' : 'Enlarge camera'}
+				onclick={() => dispatch('toggleFullscreen')}><Icon name="expand" size={19} /></button
+			>
+		</div>
+	{:else if isStreaming}
+		<div class="camera-toolbar">
+			<button
+				id="btn-set-background"
+				class="camera-tool"
+				class:filter-set={hasBackground}
+				disabled={!isStreaming}
+				onclick={() => dispatch('toggleBackground')}
+				><Icon name={hasBackground ? 'check' : 'light'} size={17} />{hasBackground
+					? 'Room filter set'
+					: 'Room filter'}</button
+			>
+			<div class="camera-tools-right">
+				<button
+					class="icon-button"
+					disabled={!isStreaming}
+					aria-label="Zoom controls"
+					aria-expanded={showZoomControls}
+					onclick={() => (showZoomControls = !showZoomControls)}
+					><Icon name="zoom" size={19} /></button
+				><button
+					class="icon-button"
+					disabled={!isStreaming}
+					aria-label={isFullscreen ? 'Exit fullscreen' : 'Enlarge camera'}
+					onclick={() => dispatch('toggleFullscreen')}><Icon name="expand" size={19} /></button
+				>{#if isStreaming}<button
+						class="icon-button stop-camera"
+						aria-label="Stop camera"
+						onclick={() => dispatch('stopCamera')}><Icon name="stop" size={17} /></button
+					>{/if}
+			</div>
+		</div>
+	{/if}
+	{#if showZoomControls && isStreaming}<div class="zoom-controls">
+			<label for="camera-zoom">Zoom <strong>{currentZoomLevel.toFixed(1)}×</strong></label><input
+				id="camera-zoom"
+				type="range"
+				min={zoomCapabilities.min}
+				max={zoomCapabilities.max}
+				step={zoomCapabilities.step}
+				value={currentZoomLevel}
+				oninput={handleSliderZoom}
+			/><button
+				class="btn btn-quiet"
+				onclick={() => handleSliderZoom({ currentTarget: { value: 1 } })}>Reset</button
+			>
+		</div>{/if}
 </div>
+
+<style>
+	.camera-viewport-container {
+		overflow: hidden;
+		border-radius: 14px;
+		background: white;
+		border: 1px solid #d9e1eb;
+	}
+	.camera-caption {
+		padding: 13px 18px;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 12px;
+		font-size: 0.78rem;
+		color: #5b6d80;
+	}
+	.camera-state {
+		display: inline-flex;
+		gap: 7px;
+		align-items: center;
+		color: #18324b;
+	}
+	.camera-state > span {
+		width: 7px;
+		height: 7px;
+		background: #9faebb;
+		border-radius: 50%;
+	}
+	.camera-state > span.connected {
+		background: #237651;
+	}
+	.camera-surface {
+		position: relative;
+		background: #203342;
+		aspect-ratio: 16/10;
+		overflow: hidden;
+	}
+	.camera-source {
+		display: none;
+	}
+	.camera-canvas {
+		height: 100%;
+		width: 100%;
+		object-fit: contain;
+		display: block;
+		touch-action: none;
+	}
+	.camera-empty {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 20px;
+		text-align: center;
+		color: #e4edf6;
+	}
+	.target-illustration {
+		width: min(60%, 280px);
+		max-height: 55%;
+		margin-bottom: 18px;
+	}
+	.camera-empty strong {
+		font-size: 1rem;
+		font-weight: 500;
+	}
+	.camera-empty p {
+		font-size: 0.8rem;
+		color: #a9bbcc;
+		margin-top: 8px;
+	}
+	.camera-toolbar {
+		padding: 9px 12px;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		min-height: 62px;
+	}
+	.camera-tool {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		min-height: 44px;
+		padding: 8px;
+		font-size: 0.8rem;
+	}
+	.filter-set {
+		color: #237651;
+	}
+	.camera-tools-right {
+		display: flex;
+		margin-left: auto;
+		gap: 2px;
+	}
+	.stop-camera {
+		color: #b73841;
+	}
+	.calibration-input {
+		position: absolute;
+		inset: 0;
+		cursor: crosshair;
+		z-index: 2;
+		touch-action: none;
+	}
+	.keyboard-cursor {
+		position: absolute;
+		width: 18px;
+		height: 18px;
+		border: 2px solid white;
+		outline: 1px solid #315de3;
+		transform: translate(-50%, -50%);
+		border-radius: 50%;
+		opacity: 0;
+	}
+	.calibration-input:focus-visible .keyboard-cursor {
+		opacity: 1;
+	}
+	.frame-badge {
+		position: absolute;
+		left: 12px;
+		top: 12px;
+		background: #fff4df;
+		color: #794109;
+		padding: 7px 11px;
+		border-radius: 6px;
+		font-size: 0.75rem;
+		pointer-events: none;
+	}
+	.calibration-guidance {
+		padding: 17px 18px 8px;
+		display: flex;
+		align-items: center;
+		gap: 13px;
+	}
+	.corner-progress {
+		font-family: 'Barlow Semi Condensed', sans-serif;
+		font-size: 2rem;
+		font-weight: 600;
+		color: #315de3;
+	}
+	.corner-progress small {
+		font-size: 1rem;
+		color: #8293a8;
+		margin-left: 2px;
+	}
+	.calibration-guidance strong {
+		font-size: 0.9rem;
+		font-weight: 600;
+	}
+	.calibration-guidance p {
+		font-size: 0.75rem;
+		color: #5b6d80;
+		margin-top: 3px;
+	}
+	.calibration-toolbar {
+		flex-wrap: wrap;
+		padding-top: 7px;
+	}
+	.calibration-toolbar .btn {
+		min-height: 44px;
+		font-size: 0.8rem;
+		padding: 8px 12px;
+	}
+	.expand-button {
+		margin-left: auto;
+	}
+	.zoom-controls {
+		border-top: 1px solid #d9e1eb;
+		display: flex;
+		align-items: center;
+		gap: 14px;
+		padding: 10px 18px;
+		font-size: 0.8rem;
+	}
+	.zoom-controls label {
+		white-space: nowrap;
+	}
+	.zoom-controls input {
+		min-width: 0;
+	}
+	.camera-callout {
+		pointer-events: none;
+		position: absolute;
+		left: 16px;
+		right: 16px;
+		bottom: 16px;
+		background: #f1f4f8;
+		color: #18324b;
+		border-left: 4px solid #315de3;
+		padding: 12px 18px;
+		font-family: 'Barlow Semi Condensed', sans-serif;
+		font-size: clamp(1.6rem, 4vw, 3rem);
+		font-weight: 600;
+	}
+	.camera-viewport-container:fullscreen {
+		border-radius: 0;
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+		background: #203342;
+	}
+	.camera-viewport-container:fullscreen .camera-caption,
+	.camera-viewport-container:fullscreen .camera-toolbar,
+	.camera-viewport-container:fullscreen .calibration-guidance,
+	.camera-viewport-container:fullscreen .zoom-controls {
+		background: white;
+	}
+	.camera-viewport-container:fullscreen .camera-surface {
+		flex: 1;
+		min-height: 0;
+		aspect-ratio: auto;
+	}
+	@media (max-width: 480px) {
+		.camera-empty {
+			padding: 15px;
+		}
+		.target-illustration {
+			margin-bottom: 12px;
+			max-height: 50%;
+		}
+		.camera-empty strong {
+			font-size: 0.9rem;
+		}
+		.camera-empty p {
+			margin-top: 5px;
+			font-size: 0.75rem;
+		}
+		.camera-caption {
+			padding: 11px 14px;
+		}
+	}
+</style>

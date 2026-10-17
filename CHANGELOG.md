@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Interface redesign
+
+- Introduced a guided camera, targets, detection-check, and training workflow.
+- Replaced floating drawers with a camera workspace and inline controls, stacked on phones and side by side on tablets and landscape devices.
+- Added readable self-hosted type, large stopwatch feedback, immediate next-rep actions, and explicit automatic-session completion.
+- Redesigned on-device history, session details, target naming, scoring controls, and shot review.
+- Added keyboard camera navigation, inline camera errors, reduced-motion support, and interface regression tests.
+- Kept laser thresholds, clustering, target scoring, and the history storage format unchanged.
+
 ### Added
 
 - Frozen-frame target calibration with Retake, Undo, and Cancel controls.

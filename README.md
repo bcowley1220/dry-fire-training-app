@@ -99,67 +99,26 @@ npm run preview
 
 ## How to Use
 
-### Initial Setup
+### Set up your practice space
 
-1. **Grant Camera Permissions**: When you first open the app, your browser will prompt for camera access. Click "Allow" to enable camera detection.
+1. Open **Practice** and choose **Enable camera**. Allow camera access in the browser. Prop up the device with the rear camera facing your practice area.
+2. In **Targets**, choose your own target, a printed template, or practice without boundaries. For target modes, choose **Mark target corners**, then tap clockwise from the top-left. The frame pauses for selection; **Undo**, **Retake**, and **Cancel** are below the image. Add and name more targets as needed.
+3. For custom scoring, expand **Scoring zones** and choose **Draw zones on target**. Zones are drawn on the most recently added target; scoring settings apply across custom targets.
+4. Choose **Check detection**. With the laser off, choose **Capture room lighting**. Fire one training laser pulse and check that one marker appears in the right place. Choose **Detection looks right** when satisfied, or explicitly skip the check.
 
-2. **Position Your Target**:
-   - Place a target (calendar, paper target, or any flat surface) on a wall
-   - Ensure good lighting
-   - Position your device/camera 5-6 feet away from the target
-   - Make sure the target is clearly visible in the camera feed
+### Run a drill
 
-3. **Calibrate the Target**:
-   - Click **"Calibrate Target"**
-   - Tap the **4 corners** of your target **clockwise**:
-     - Top-left corner
-     - Top-right corner
-     - Bottom-right corner
-     - Bottom-left corner
-   - The app will draw a green dashed outline around your target area
+In **Train**, choose **Draw**, **Reload**, or **Call-out**. Expand **Drill settings** to set the random delay, volume, automatic repetitions, rest time, and optional malfunction simulation. Call-out drills require a named target.
 
-### Target Modes
+Choose **Start drill**, step into position, and wait for the beep. The timer replaces settings during training. After a rep, choose **Next rep**, or let automatic repetitions continue. The last automatic rep offers **Repeat session**. **Review session** shows timing and results; **Finish session** opens saved history.
 
-#### Preloaded Templates
+### Review your practice
 
-- Select a template (e.g., "IPSC Classic")
-- Calibrate your target
-- Zones will automatically load after calibration
+Open **History** without needing camera access. Select a saved session to see reps, total times, splits, and hit zones. Filter by drill type or delete a session. Records stay in this browser and do not sync across devices.
 
-#### Custom Zones
+Expand **Shot view** below the camera during training for recent hits, numbered markers, connecting lines, replay, grouping in camera pixels, and image export. **Tools & help** contains diagnostic overlays and preference reset.
 
-- Select "Custom" mode
-- Calibrate your target
-- Click **"Define Zones Visually"**
-- Define zones A, C, and D by tapping their corners
-- Set point values for each zone
-
-#### Freeform Mode
-
-- Select "Freeform" mode
-- No calibration required
-- All hits are tracked regardless of location
-
-### Using the Shot Timer
-
-1. **Configure Settings**:
-   - **Random Delay**: Set min/max delay before beep (default: 2-5 seconds)
-   - **Beep Volume**: Adjust volume slider
-   - **Auto Next Round** (optional):
-     - Enable checkbox
-     - Set number of rounds (1-100)
-     - Set reset duration (1-10 seconds)
-
-2. **Start a Session**:
-   - Click **"I'm Ready - Start Drill"**
-   - Get into position
-   - Wait for the beep
-   - Draw and shoot on the beep
-
-3. **View Results**:
-   - After each shot, see your draw time and hit zone
-   - View session statistics
-   - Review shot sequence visualization
+Preferences and history survive a refresh. Camera positioning and target coordinates must be checked for each new setup. This is a proof of concept; the detection check is user-confirmed and is not an accuracy guarantee.
 
 ### Detection Tips
 
@@ -250,16 +209,13 @@ If detection isn't working:
 
 ```
 dry-fire-trainer/
-├── src/
-│   ├── routes/
-│   │   ├── +page.svelte      # Main application
-│   │   └── +layout.svelte    # Layout wrapper
-│   └── lib/
-│       └── components/
-│           └── MobileLayout.svelte
-├── static/                    # Static assets
-├── package.json
-└── README.md
+├── src/routes/              # Practice workflow and app layout
+├── src/lib/components/      # Camera, targets, timer, history, and review controls
+├── src/lib/storage/         # Local IndexedDB history and session writer
+├── src/lib/utils/           # Detection, zones, wake lock, and display helpers
+├── tests/                   # Storage and interface regression checks
+├── docs/frontend-design.md  # Audit, visual direction, and workflow decisions
+└── static/                  # Static assets
 ```
 
 ### Code Formatting

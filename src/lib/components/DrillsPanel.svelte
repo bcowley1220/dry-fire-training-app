@@ -1,553 +1,476 @@
 <script>
 	import { createEventDispatcher } from 'svelte';
-
-	// Props
-	export let mobile = false;
+	import Icon from './Icon.svelte';
+	import { formatTime, repTime, sessionSummary, trainingStatus } from '../utils/trainingView.js';
 	export let active = false;
-	export let phase = 'idle'; // 'idle' | 'waiting' | 'active' | 'complete'
-	export let config = {
-		drillType: 'draw',
-		mode: 'draw',
-		randomDelayMin: 2000,
-		randomDelayMax: 5000,
-		beepVolume: 0.3,
-		beepFrequency: 1000,
-		autoNextRound: false,
-		roundCount: 10,
-		resetDuration: 3000,
-		malfunctionMode: false,
-		malfunctionProbability: 0.1
-	};
+	export let phase = 'idle';
+	export let config;
 	export let session = { reps: [], startedAt: null };
 	export let currentRound = 0;
 	export let autoNextCountdown = null;
 	export let startTime = null;
-	export let timerDisplayUpdate = 0; // Trigger for reactivity
-
+	export let timerDisplayUpdate = 0;
+	export let ready = false;
+	export let targetCount = 0;
+	export let waitingForClear = false;
+	export let callOutTarget = null;
 	const dispatch = createEventDispatcher();
-
-	// Local state
-	let showStats = false;
-
-	// Helpers
-	function formatTime(ms) {
-		return (ms / 1000).toFixed(2);
-	}
-
-	function getRepTime(rep) {
-		return rep.drillType === 'reload' ? rep.totalTime : rep.drawTime;
-	}
-
-	function getCurrentElapsed() {
-		if (!startTime) return 0;
-		// Use the trigger prop to ensure reactivity
-		void timerDisplayUpdate;
-		return performance.now() - startTime;
-	}
-
-	function calculateAverage() {
-		const reps = session.reps;
-		if (reps.length === 0) return 0;
-		const sum = reps.reduce((acc, rep) => acc + getRepTime(rep), 0);
-		return sum / reps.length;
-	}
-
-	function calculateBest() {
-		const reps = session.reps;
-		if (reps.length === 0) return 0;
-		return Math.min(...reps.map((rep) => getRepTime(rep)));
-	}
-
-	function calculateWorst() {
-		const reps = session.reps;
-		if (reps.length === 0) return 0;
-		return Math.max(...reps.map((rep) => getRepTime(rep)));
-	}
-
-	function calculateAccuracyByZone() {
-		const reps = session.reps;
-		const zoneCounts = {};
-
-		reps.forEach((rep) => {
-			// Handle multiple hits for reload drill
-			const hits = rep.hits || [rep.hit];
-			hits.forEach((hit) => {
-				const zone = hit.zone;
-				if (!zoneCounts[zone]) {
-					zoneCounts[zone] = {
-						name: zone,
-						color: hit.zoneColor,
-						count: 0
-					};
-				}
-				zoneCounts[zone].count++;
-			});
-		});
-
-		const totalHits = session.reps.reduce((acc, rep) => acc + (rep.hits ? rep.hits.length : 1), 0);
-
-		return Object.values(zoneCounts).map((zone) => ({
-			...zone,
-			percentage: Math.round((zone.count / totalHits) * 100)
-		}));
-	}
-
-	// Actions
-	function start() {
-		dispatch('start');
-	}
-
-	function cancel() {
-		dispatch('cancel');
-	}
-
-	function next() {
-		dispatch('next');
-	}
-
-	function endSession() {
-		showStats = false;
-		dispatch('end');
-	}
-
-	function close() {
-		dispatch('close');
+	let showReview = false;
+	$: lastRep = session.reps.at(-1);
+	$: summary = sessionSummary(session.reps);
+	$: finished = phase === 'complete' && config.autoNextRound && currentRound >= config.roundCount;
+	$: status = trainingStatus({
+		phase,
+		waitingForClear,
+		callOutTarget,
+		autoNextCountdown,
+		sessionFinished: finished
+	});
+	$: elapsed = timerDisplayUpdate && startTime ? timerDisplayUpdate - startTime : 0;
+	$: time =
+		autoNextCountdown !== null
+			? Math.ceil(autoNextCountdown / 1000)
+			: phase === 'complete'
+				? formatTime(repTime(lastRep))
+				: formatTime(elapsed);
+	const drills = [
+		{
+			id: 'draw',
+			name: 'Draw',
+			detail: 'First-shot time',
+			description: 'Draw and fire one training shot after the beep.'
+		},
+		{
+			id: 'reload',
+			name: 'Reload',
+			detail: 'Two-shot drill',
+			description: 'Fire once, reload, then fire again. See both splits.'
+		},
+		{
+			id: 'callout',
+			name: 'Call-out',
+			detail: 'Target recognition',
+			description: 'Listen for a target name, then hit the target called.'
+		}
+	];
+	function delay(event, key) {
+		const value = Number(event.target.value) * 1000;
+		if (value >= 1000 && value <= 30000) {
+			config[key] = value;
+			if (config.randomDelayMax < config.randomDelayMin)
+				config.randomDelayMax = config.randomDelayMin;
+		}
+		event.target.value = config[key] / 1000;
 	}
 </script>
 
-<div class="mb-4 h-full overflow-y-auto rounded-lg bg-secondary/50 p-4">
-	<div class="mb-4 flex items-center justify-between">
-		<h3 class="text-lg font-semibold">{showStats ? 'Session Stats' : 'Drills'}</h3>
-		<button
-			on:click={close}
-			class="rounded-lg bg-secondary px-3 py-1.5 text-sm font-semibold transition-colors hover:bg-secondary/80"
-			aria-label="Close drills panel"
-		>
-			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					stroke-width="2"
-					d="M6 18L18 6M6 6l12 12"
-				/>
-			</svg>
-		</button>
-	</div>
-
-	{#if showStats && session.reps.length > 0}
-		<!-- Session Statistics View -->
-		<div class="space-y-6">
-			<div class="grid grid-cols-2 gap-4">
-				<div class="rounded-lg bg-background/50 p-4 text-center">
-					<div class="mb-1 text-sm text-muted-foreground">Reps</div>
-					<div class="font-mono text-2xl font-bold">{session.reps.length}</div>
-				</div>
-				<div class="rounded-lg bg-background/50 p-4 text-center">
-					<div class="mb-1 text-sm text-muted-foreground">Average</div>
-					<div class="font-mono text-2xl font-bold">{formatTime(calculateAverage())}s</div>
-				</div>
-				<div class="rounded-lg bg-background/50 p-4 text-center">
-					<div class="mb-1 text-sm text-muted-foreground">Best</div>
-					<div class="font-mono text-2xl font-bold text-success">
-						{formatTime(calculateBest())}s
-					</div>
-				</div>
-				<div class="rounded-lg bg-background/50 p-4 text-center">
-					<div class="mb-1 text-sm text-muted-foreground">Worst</div>
-					<div class="font-mono text-2xl font-bold text-destructive">
-						{formatTime(calculateWorst())}s
-					</div>
-				</div>
-			</div>
-
-			{#if calculateAccuracyByZone().length > 0}
-				<div>
-					<h5 class="text-md mb-3 font-semibold">Accuracy</h5>
-					<div class="space-y-2">
-						{#each calculateAccuracyByZone() as zone (zone.name)}
-							<div class="flex items-center justify-between border-b border-border py-2">
-								<span style="color: {zone.color}; font-weight: 600;">{zone.name}</span>
-								<span class="text-foreground">
-									{zone.count}/{session.reps.length} ({zone.percentage}%)
-								</span>
-							</div>
-						{/each}
-					</div>
-				</div>
-			{/if}
-
+<section
+	class="drill-console"
+	class:live={phase !== 'idle'}
+	class:stats-expanded={showReview}
+	aria-label="Training controls"
+>
+	{#if phase === 'idle'}
+		<div class="stack">
 			<div>
-				<h5 class="text-md mb-3 font-semibold">Individual Reps</h5>
-				<div class="max-h-48 space-y-2 overflow-y-auto">
-					{#each session.reps as rep, index (rep.id)}
-						<div
-							class="flex items-center justify-between rounded bg-background/50 px-3 py-2 text-sm"
-						>
-							<div class="flex items-center gap-3">
-								<span class="text-muted-foreground">#{index + 1}</span>
-								<span class="font-mono">{formatTime(getRepTime(rep))}s</span>
-								{#if rep.drillType === 'reload'}
-									<span class="text-xs text-muted-foreground"
-										>({formatTime(rep.drawTime)} / {formatTime(rep.reloadTime)})</span
-									>
-								{/if}
-								{#if rep.drillType === 'callout'}
-									<span class="text-xs text-muted-foreground">({rep.calledTarget})</span>
-								{/if}
-								{#if rep.isMalfunction}
-									<span
-										class="rounded border border-destructive/30 bg-destructive/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-destructive"
-										>MALF</span
-									>
-								{/if}
-							</div>
-							<div class="flex items-center gap-2">
-								{#if rep.drillType === 'reload' && rep.hits}
-									{#each rep.hits as hit, hitIndex (hitIndex)}
-										<span style="color: {hit.zoneColor}; font-weight: 600; font-size: 0.75rem;"
-											>{hit.zone}</span
-										>
-									{/each}
-								{:else}
-									<span style="color: {rep.hit.zoneColor}; font-weight: 600;">{rep.hit.zone}</span>
-									{#if rep.isFailure}
-										<span class="font-bold text-destructive"
-											>{rep.drillType === 'callout' ? 'WRONG TGT' : 'FAIL'}</span
-										>
-									{:else if rep.hit.points !== null}
-										<span class="text-muted-foreground">+{rep.hit.points}</span>
-									{/if}
-								{/if}
-							</div>
-						</div>
-					{/each}
-				</div>
+				<h2>Make the next rep count.</h2>
+				<p class="muted intro">Choose a drill. Set your pace. Step back when you're ready.</p>
 			</div>
-
-			<div class="flex gap-3">
-				<button
-					on:click={() => {
-						showStats = false;
-						start();
-					}}
-					class="flex-1 rounded-lg bg-primary px-6 py-3 font-semibold transition-colors hover:bg-primary/90"
-				>
-					Continue
-				</button>
-				<button
-					on:click={endSession}
-					class="flex-1 rounded-lg bg-secondary px-6 py-3 font-semibold transition-colors hover:bg-secondary/80"
-				>
-					End Session
-				</button>
+			<fieldset class="drill-choices">
+				<legend class="sr-only">Choose a drill</legend>
+				{#each drills as drill (drill.id)}
+					<label class:selected={config.drillType === drill.id}
+						><input
+							type="radio"
+							name="drill-type"
+							value={drill.id}
+							bind:group={config.drillType}
+						/><strong>{drill.name}</strong><span>{drill.detail}</span></label
+					>
+				{/each}
+			</fieldset>
+			<p class="small muted">
+				{drills.find((drill) => drill.id === config.drillType)?.description}
+			</p>
+			<div class="session-plan">
+				<Icon name="refresh" size={18} /><span
+					>{config.autoNextRound
+						? `${config.roundCount} automatic reps`
+						: 'One rep at a time'}</span
+				><span>{config.randomDelayMin / 1000}–{config.randomDelayMax / 1000}s delay</span>
 			</div>
-		</div>
-	{:else if !active && phase === 'idle'}
-		<!-- Configuration View -->
-		<div class="space-y-4">
-			<div>
-				<label
-					for="drill-type-{mobile ? 'mobile' : 'desktop'}"
-					class="mb-2 block text-sm text-muted-foreground">Drill Type</label
+			<details class="tool-disclosure">
+				<summary
+					><span class="action-row"><Icon name="settings" size={18} />Drill settings</span></summary
 				>
-				<select
-					id="drill-type-{mobile ? 'mobile' : 'desktop'}"
-					bind:value={config.drillType}
-					class="w-full rounded border border-border bg-background px-3 py-2 text-foreground"
-				>
-					<option value="draw">Draw Speed</option>
-					<option value="reload">Magazine Reload</option>
-					<option value="callout">Call-Out (Multi-Target)</option>
-				</select>
-			</div>
-
-			<div>
-				<div class="mb-2 block text-sm text-muted-foreground">Random Delay (seconds):</div>
-				<div class="flex items-center gap-3">
-					<input
-						type="number"
-						min="1"
-						max="10"
-						value={config.randomDelayMin / 1000}
-						on:input={(e) => {
-							const val = parseFloat(e.target.value) * 1000;
-							if (!isNaN(val) && val > 0 && val <= config.randomDelayMax) {
-								config.randomDelayMin = val;
-							}
-						}}
-						class="w-20 rounded border border-border bg-background px-3 py-2 text-foreground"
-					/>
-					<span class="text-muted-foreground">to</span>
-					<input
-						type="number"
-						min="1"
-						max="10"
-						value={config.randomDelayMax / 1000}
-						on:input={(e) => {
-							const val = parseFloat(e.target.value) * 1000;
-							if (!isNaN(val) && val > 0 && val >= config.randomDelayMin) {
-								config.randomDelayMax = val;
-							}
-						}}
-						class="w-20 rounded border border-border bg-background px-3 py-2 text-foreground"
-					/>
-				</div>
-			</div>
-
-			<div>
-				<label
-					for="beep-volume-{mobile ? 'mobile' : 'desktop'}"
-					class="mb-2 block text-sm text-muted-foreground"
-				>
-					Beep Volume: {Math.round(config.beepVolume * 100)}%
-				</label>
-				<input
-					id="beep-volume-{mobile ? 'mobile' : 'desktop'}"
-					type="range"
-					min="0"
-					max="100"
-					value={config.beepVolume * 100}
-					on:input={(e) => (config.beepVolume = e.target.value / 100)}
-					class="w-full"
-				/>
-			</div>
-
-			<div class="mt-4 border-t border-border pt-4">
-				<div class="mb-4 flex items-center gap-3">
-					<input type="checkbox" bind:checked={config.autoNextRound} class="h-5 w-5" />
-					<label class="text-sm font-semibold"> Enable Automatic Next Round </label>
-				</div>
-
-				{#if config.autoNextRound}
-					<div class="ml-8 space-y-3">
-						<div>
-							<label class="mb-2 block text-sm text-muted-foreground">
-								Number of Rounds: {config.roundCount}
-							</label>
-							<input
+				<div class="stack settings-content">
+					<div class="field-pair">
+						<div class="field">
+							<label for="delay-min">Minimum delay (s)</label><input
+								id="delay-min"
 								type="number"
 								min="1"
-								max="100"
-								bind:value={config.roundCount}
-								class="w-full rounded border border-border bg-background px-3 py-2 text-foreground"
+								max="30"
+								value={config.randomDelayMin / 1000}
+								on:change={(event) => delay(event, 'randomDelayMin')}
 							/>
 						</div>
-						<div>
-							<label class="mb-2 block text-sm text-muted-foreground">
-								Reset Duration: {(config.resetDuration / 1000).toFixed(1)}s
-							</label>
-							<input
-								type="range"
-								min="1"
-								max="10"
-								step="0.5"
-								value={config.resetDuration / 1000}
-								on:input={(e) => (config.resetDuration = parseFloat(e.target.value) * 1000)}
-								class="w-full"
+						<div class="field">
+							<label for="delay-max">Maximum delay (s)</label><input
+								id="delay-max"
+								type="number"
+								min={config.randomDelayMin / 1000}
+								max="30"
+								value={config.randomDelayMax / 1000}
+								on:change={(event) => delay(event, 'randomDelayMax')}
 							/>
 						</div>
 					</div>
-				{/if}
-			</div>
-
-			<div class="mt-4 border-t border-border pt-4">
-				<div class="mb-2 flex items-center gap-3">
-					<input
-						type="checkbox"
-						id="malfunction-mode-{mobile ? 'mobile' : 'desktop'}"
-						bind:checked={config.malfunctionMode}
-						class="h-5 w-5"
-					/>
-					<label
-						for="malfunction-mode-{mobile ? 'mobile' : 'desktop'}"
-						class="text-sm font-semibold"
+					<div class="field">
+						<label for="beep-volume"
+							>Beep volume <span class="muted">{Math.round(config.beepVolume * 100)}%</span></label
+						><input
+							id="beep-volume"
+							type="range"
+							min="0"
+							max="1"
+							step=".05"
+							bind:value={config.beepVolume}
+						/>
+					</div>
+					<label class="check-row"
+						><input type="checkbox" bind:checked={config.autoNextRound} /><span
+							><strong>Repeat automatically</strong><span class="small muted"
+								>Stay in position between reps.</span
+							></span
+						></label
 					>
-						Random Malfunctions (Striker Mode)
-					</label>
-				</div>
-				<p class="mb-4 ml-8 text-xs text-muted-foreground">
-					Randomly simulates a dead trigger (10% chance). You must rack the slide and fire again to
-					stop the timer.
-				</p>
-			</div>
-
-			<button
-				on:click={start}
-				disabled={active}
-				class="w-full rounded-lg bg-primary px-6 py-4 text-lg font-semibold transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-secondary"
-			>
-				I'm Ready - Start Drill
-			</button>
-
-			{#if session.reps.length > 0}
-				<div class="mt-4 border-t border-border pt-4">
-					<p class="mb-2 text-sm text-muted-foreground">
-						Session: {session.reps.length} rep{session.reps.length !== 1 ? 's' : ''} completed
-					</p>
-					<button
-						on:click={() => (showStats = true)}
-						class="w-full rounded-lg bg-secondary px-4 py-2 text-sm font-semibold transition-colors hover:bg-secondary/80"
+					{#if config.autoNextRound}<div class="field-pair">
+							<div class="field">
+								<label for="round-count">Number of reps</label><input
+									id="round-count"
+									type="number"
+									min="1"
+									max="100"
+									value={config.roundCount}
+									on:change={(event) =>
+										(config.roundCount = Math.max(
+											1,
+											Math.min(100, Number(event.target.value) || 1)
+										))}
+								/>
+							</div>
+							<div class="field">
+								<label for="reset-duration">Rest between reps (s)</label><input
+									id="reset-duration"
+									type="number"
+									min="1"
+									max="30"
+									value={config.resetDuration / 1000}
+									on:change={(event) =>
+										(config.resetDuration =
+											Math.max(1, Math.min(30, Number(event.target.value) || 1)) * 1000)}
+								/>
+							</div>
+						</div>{/if}
+					<label class="check-row"
+						><input type="checkbox" bind:checked={config.malfunctionMode} /><span
+							><strong>Random malfunctions</strong><span class="small muted"
+								>Occasionally ignore the first hit. Clear and fire again.</span
+							></span
+						></label
 					>
-						View Session Stats
-					</button>
 				</div>
-			{/if}
-		</div>
-	{:else if phase === 'waiting'}
-		<!-- Waiting Phase -->
-		<div class="py-8 text-center">
-			{#if config.autoNextRound && currentRound > 0}
-				<div class="mb-2 text-sm text-muted-foreground">
-					Round {currentRound} of {config.roundCount}
-				</div>
-			{/if}
-			<div class="mb-4 inline-block h-3 w-3 animate-pulse rounded-full bg-warning"></div>
-			<p class="mb-4 text-lg font-semibold">Get ready... Timer will beep soon</p>
+			</details>
+			{#if !ready}<p class="notice">
+					Start the camera and finish target setup to begin.
+				</p>{:else if config.drillType === 'callout' && !targetCount}<p class="notice">
+					Add at least one named target for a call-out drill.
+				</p>{/if}
 			<button
-				on:click={cancel}
-				class="rounded-lg bg-destructive px-6 py-2 font-semibold transition-colors hover:bg-destructive/90"
+				class="btn btn-primary btn-large btn-full"
+				disabled={!ready || (config.drillType === 'callout' && !targetCount)}
+				on:click={() => {
+					showReview = false;
+					dispatch('start');
+				}}><Icon name="play" size={18} />Start drill</button
 			>
-				Cancel Drill
-			</button>
+			<p class="small muted start-note">Wait for the beep before firing your training laser.</p>
 		</div>
-	{:else if phase === 'active' || phase === 'reloading'}
-		<!-- Active Phase -->
+	{:else}
 		<div
-			class="border-2 py-8 text-center {phase === 'reloading'
-				? 'border-warning'
-				: 'border-success'} rounded-lg"
+			class="live-readout"
+			class:waiting={phase === 'waiting'}
+			class:complete={phase === 'complete'}
+			class:failed={lastRep?.isFailure && phase === 'complete'}
 		>
-			{#if config.autoNextRound && currentRound > 0}
-				<div class="mb-2 text-sm text-muted-foreground">
-					Round {currentRound} of {config.roundCount}
-				</div>
-			{/if}
-			<div
-				class="font-mono text-5xl font-bold {phase === 'reloading'
-					? 'text-warning'
-					: 'text-success'} mb-4"
-			>
-				{formatTime(getCurrentElapsed())}s
+			<div class="rep-counter">
+				{config.autoNextRound
+					? `Rep ${currentRound} of ${config.roundCount}`
+					: `Rep ${currentRound}`}
 			</div>
-			<p class="mb-4 text-xl font-semibold">
-				{#if phase === 'reloading'}
-					⚠️ RELOAD! SHOOT AGAIN!
-				{:else}
-					⏱️ TIMER ACTIVE - SHOOT!
-				{/if}
-			</p>
-			<button
-				on:click={cancel}
-				class="rounded-lg bg-destructive px-6 py-2 font-semibold transition-colors hover:bg-destructive/90"
-			>
-				Cancel
-			</button>
-		</div>
-	{:else if phase === 'complete'}
-		<!-- Complete Phase -->
-		{@const lastRep = session.reps[session.reps.length - 1]}
-		<div class="space-y-4">
-			{#if config.autoNextRound && currentRound > 0}
-				<div class="mb-2 text-center">
-					<div class="text-sm text-muted-foreground">
-						Round {currentRound} of {config.roundCount}
-					</div>
-					{#if currentRound >= config.roundCount}
-						<div class="mt-2 text-lg font-semibold text-success">Session Complete!</div>
-					{/if}
-				</div>
-			{/if}
-			<div class="py-4 text-center">
-				{#if lastRep.drillType === 'reload'}
-					<div class="mb-4 grid grid-cols-2 gap-4">
-						<div class="rounded bg-background/30 p-2">
-							<div class="text-xs text-muted-foreground">Draw</div>
-							<div class="font-mono text-xl font-bold text-success">
-								{formatTime(lastRep.drawTime)}s
-							</div>
-						</div>
-						<div class="rounded bg-background/30 p-2">
-							<div class="text-xs text-muted-foreground">Reload</div>
-							<div class="font-mono text-xl font-bold text-warning">
-								{formatTime(lastRep.reloadTime)}s
-							</div>
-						</div>
-					</div>
-					<div class="mb-1 text-sm text-muted-foreground">Total Time</div>
-					<div class="mb-4 font-mono text-4xl font-bold text-primary">
-						{formatTime(lastRep.totalTime)}s
-					</div>
-					<div class="flex flex-col items-center gap-2 text-sm">
-						{#each lastRep.hits as hit, i (i)}
-							<div class="flex items-center gap-2">
-								<span class="text-xs font-bold text-muted-foreground uppercase">Shot {i + 1}:</span>
-								<span style="color: {hit.zoneColor}; font-weight: 600;">{hit.zone}</span>
-								{#if hit.points !== null}
-									<span class="font-semibold text-warning">+{hit.points}</span>
-								{/if}
-							</div>
-						{/each}
-					</div>
-				{:else if lastRep.drillType === 'callout'}
-					<div class="mb-2 text-sm text-muted-foreground">
-						Called: <span class="font-bold text-foreground">{lastRep.calledTarget}</span>
-					</div>
-					<div
-						class="font-mono text-4xl font-bold {lastRep.isFailure
-							? 'text-destructive'
-							: 'text-success'} mb-4"
-					>
-						{formatTime(lastRep.drawTime)}s
-					</div>
-					<div class="flex items-center justify-center gap-4 text-lg">
-						<span style="color: {lastRep.hit.zoneColor}; font-weight: 600;">
-							{lastRep.hit.zone}
-						</span>
-						{#if lastRep.isFailure}
-							<span class="font-bold text-destructive">WRONG TARGET</span>
-						{/if}
-					</div>
-				{:else}
-					<div class="mb-2 text-sm text-muted-foreground">Draw Time:</div>
-					<div class="mb-4 font-mono text-4xl font-bold text-success">
-						{formatTime(lastRep.drawTime)}s
-					</div>
-					<div class="flex items-center justify-center gap-4 text-lg">
-						<span style="color: {lastRep.hit.zoneColor}; font-weight: 600;">
-							{lastRep.hit.zone}
-						</span>
-						{#if lastRep.hit.points !== null}
-							<span class="font-semibold text-warning">+{lastRep.hit.points} pts</span>
-						{/if}
-					</div>
-				{/if}
-			</div>
-
-			{#if config.autoNextRound && currentRound < config.roundCount && autoNextCountdown !== null}
-				<div class="rounded-lg border border-primary bg-primary/20 p-4 text-center">
-					<div class="mb-2 text-sm text-muted-foreground">Next round starting in:</div>
-					<div class="font-mono text-3xl font-bold text-primary">
-						{(autoNextCountdown / 1000).toFixed(1)}s
-					</div>
-				</div>
-			{/if}
-
-			<div class="flex gap-3">
-				{#if !config.autoNextRound || currentRound < config.roundCount}
-					<button
-						on:click={next}
-						class="flex-1 rounded-lg bg-primary px-6 py-3 font-semibold transition-colors hover:bg-primary/90"
-					>
-						Next Rep
-					</button>
-				{/if}
-				<button
-					on:click={() => (showStats = true)}
-					class="flex-1 rounded-lg bg-secondary px-6 py-3 font-semibold transition-colors hover:bg-secondary/80"
+			<p class="phase-label" aria-live="polite">{status}</p>
+			{#if phase === 'waiting'}<div class="standby-display">
+					Listen for<br />the beep.
+				</div>{:else}<div
+					class="timer-value"
+					aria-label={autoNextCountdown !== null
+						? `Next rep in ${time} seconds`
+						: `${time} seconds`}
 				>
-					View Stats
-				</button>
-			</div>
+					<span>{time}</span><small>s</small>
+				</div>{/if}
+			{#if phase === 'complete' && lastRep}<div class="rep-outcome">
+					{lastRep.isFailure
+						? `Wrong target. Called ${lastRep.calledTarget}.`
+						: lastRep.drillType === 'reload'
+							? `Draw ${formatTime(lastRep.drawTime)}s / Reload ${formatTime(lastRep.reloadTime)}s`
+							: `${lastRep.hit?.zone || 'Hit'}${lastRep.hit?.points != null ? ` / ${lastRep.hit.points} points` : ''}`}
+				</div>{:else if phase === 'reloading'}<p class="rep-outcome">
+					First shot registered. Reload for your second shot.
+				</p>{:else if phase === 'active'}<p class="rep-outcome">
+					{waitingForClear
+						? 'Clear, then fire again.'
+						: config.drillType === 'callout'
+							? 'Fire at the named target.'
+							: 'Fire when ready.'}
+				</p>{/if}
+		</div>
+		<div class="live-actions">
+			{#if active || autoNextCountdown !== null}<button
+					class="btn btn-full"
+					on:click={() => dispatch('cancel')}><Icon name="stop" size={17} />Stop drill</button
+				>{:else}<button
+					class="btn btn-primary btn-large btn-full"
+					on:click={() => {
+						showReview = false;
+						dispatch(finished ? 'start' : 'next');
+					}}><Icon name="refresh" size={18} />{finished ? 'Repeat session' : 'Next rep'}</button
+				>
+				<div class="action-row">
+					<button class="btn btn-quiet" on:click={() => (showReview = !showReview)}
+						>{showReview ? 'Hide results' : 'Review session'}</button
+					><button class="btn btn-quiet" on:click={() => dispatch('finish')}>Finish session</button>
+				</div>{/if}
 		</div>
 	{/if}
-</div>
+	{#if summary.count > 0}
+		<div class="session-summary">
+			<div><span>Completed</span><strong>{summary.count}<small> reps</small></strong></div>
+			<div><span>Best</span><strong>{formatTime(summary.best)}<small>s</small></strong></div>
+			<div><span>Average</span><strong>{formatTime(summary.average)}<small>s</small></strong></div>
+		</div>
+		{#if showReview}<div class="rep-table">
+				<div class="table-heading"><span>Rep</span><span>Time</span><span>Result</span></div>
+				{#each session.reps as rep, index (rep.id)}<div>
+						<span>{index + 1}</span><strong>{formatTime(repTime(rep))}s</strong><span
+							>{rep.isFailure
+								? 'Wrong target'
+								: (rep.hits || [rep.hit]).map((hit) => hit?.zone || 'Hit').join(' / ')}</span
+						>
+					</div>{/each}
+			</div>{/if}
+	{/if}
+</section>
+
+<style>
+	.intro {
+		margin-top: 12px;
+	}
+	.drill-choices {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 8px;
+		border: 0;
+		padding: 0;
+		margin: 0;
+	}
+	.drill-choices label {
+		padding: 12px 8px;
+		border: 1px solid #d9e1eb;
+		border-radius: 8px;
+		cursor: pointer;
+		position: relative;
+	}
+	.drill-choices input {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		opacity: 0;
+	}
+	.drill-choices label:has(input:focus-visible) {
+		outline: 3px solid #315de3;
+		outline-offset: 3px;
+	}
+	.drill-choices label.selected {
+		border-color: #315de3;
+		background: #eef3ff;
+	}
+	.drill-choices strong {
+		font-size: 1rem;
+		display: block;
+	}
+	.drill-choices span {
+		display: block;
+		font-size: 0.7rem;
+		line-height: 1.35;
+		color: #5b6d80;
+		margin-top: 4px;
+	}
+	.session-plan {
+		display: flex;
+		gap: 10px;
+		flex-wrap: wrap;
+		align-items: center;
+		font-size: 0.8rem;
+		color: #5b6d80;
+	}
+	.session-plan span:last-child {
+		margin-left: auto;
+	}
+	.start-note {
+		text-align: center;
+		margin-top: -8px;
+		font-size: 0.8rem;
+	}
+	.live-readout {
+		background: #eaf0ff;
+		border-radius: 12px;
+		padding: 26px 18px 24px;
+		text-align: center;
+		color: #244cc8;
+	}
+	.live-readout.waiting {
+		background: #fff4df;
+		color: #8c4a0c;
+	}
+	.live-readout.complete {
+		background: #edf5f2;
+		color: #1c6546;
+	}
+	.live-readout.failed {
+		background: #fff0f0;
+		color: #a72f39;
+	}
+	.rep-counter {
+		font-size: 0.85rem;
+		opacity: 0.8;
+		margin-bottom: 18px;
+	}
+	.phase-label {
+		font-weight: 600;
+		font-size: 1.2rem;
+	}
+	.standby-display {
+		font-family: 'Barlow Semi Condensed', sans-serif;
+		font-weight: 500;
+		font-size: clamp(3rem, 6vw, 4.5rem);
+		line-height: 1;
+		padding: 18px 0;
+	}
+	.timer-value {
+		display: flex;
+		align-items: baseline;
+		justify-content: center;
+		gap: 7px;
+		padding: 8px 0 6px;
+		font-family: 'Barlow Semi Condensed', sans-serif;
+		font-variant-numeric: tabular-nums;
+		line-height: 1;
+	}
+	.timer-value > span {
+		font-size: clamp(5.5rem, 10vw, 8rem);
+		font-weight: 500;
+		letter-spacing: -0.045em;
+	}
+	.timer-value small {
+		font-size: 1.8rem;
+	}
+	.rep-outcome {
+		font-size: 0.9rem;
+		margin: 12px auto 0;
+		line-height: 1.5;
+	}
+	.live-actions {
+		padding-top: 16px;
+	}
+	.live-actions .action-row {
+		justify-content: space-between;
+		margin-top: 8px;
+	}
+	.session-summary {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		padding: 22px 0 0;
+		margin-top: 24px;
+		border-top: 1px solid #d9e1eb;
+		gap: 12px;
+	}
+	.session-summary span {
+		display: block;
+		color: #5b6d80;
+		font-size: 0.8rem;
+	}
+	.session-summary strong {
+		display: block;
+		font-family: 'Barlow Semi Condensed', sans-serif;
+		font-weight: 500;
+		font-size: 1.9rem;
+		font-variant-numeric: tabular-nums;
+		margin-top: 4px;
+	}
+	.session-summary small {
+		font-size: 0.85rem;
+	}
+	.rep-table {
+		margin-top: 20px;
+		max-height: 340px;
+		overflow: auto;
+		font-size: 0.85rem;
+	}
+	.rep-table > div {
+		display: grid;
+		grid-template-columns: 36px 80px 1fr;
+		padding: 10px 0;
+		border-bottom: 1px solid #e4eaf2;
+	}
+	.table-heading {
+		color: #5b6d80;
+	}
+	@media (max-width: 360px) {
+		.drill-choices span {
+			display: none;
+		}
+	}
+	@media (max-width: 700px), (max-height: 550px) and (orientation: landscape) {
+		.drill-console.live:not(.stats-expanded) .session-summary {
+			display: none;
+		}
+		.live-readout {
+			padding: 18px 16px;
+		}
+		.rep-counter {
+			margin-bottom: 10px;
+		}
+		.timer-value > span {
+			font-size: 6rem;
+		}
+	}
+	@media (max-height: 550px) and (orientation: landscape) {
+		.live-readout {
+			padding: 12px;
+		}
+		.rep-counter {
+			margin-bottom: 4px;
+		}
+		.timer-value > span {
+			font-size: 4.5rem;
+		}
+		.rep-outcome {
+			margin-top: 4px;
+		}
+		.live-actions {
+			padding-top: 10px;
+		}
+	}
+</style>

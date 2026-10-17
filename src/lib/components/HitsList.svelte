@@ -2,63 +2,41 @@
 	export let hits = [];
 </script>
 
-<div class="flex min-h-[200px] flex-col rounded-xl border border-border bg-card p-4">
-	{#if hits.length === 0}
-		<div class="flex flex-1 flex-col items-center justify-center space-y-3 py-8 text-center">
-			<div class="flex h-16 w-16 items-center justify-center rounded-full bg-secondary/50">
-				<svg
-					class="h-8 w-8 text-muted-foreground"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						stroke-width="2"
-						d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-					/>
-				</svg>
-			</div>
-			<div>
-				<p class="text-sm font-medium text-muted-foreground">No hits detected yet</p>
-				<p class="mt-1 text-xs text-muted-foreground/60">Point your laser at the target</p>
-			</div>
+{#if !hits.length}<p class="small muted empty-note">
+		No hits in this view yet. Detected laser pulses will appear on the camera image.
+	</p>{:else}<div class="hit-list">
+		<div class="hit-list-heading">
+			<span>Shot</span><span>Zone</span><span>Points</span><span>Time</span>
 		</div>
-	{:else}
-		<div class="space-y-2">
-			<div class="mb-3 flex items-center justify-between">
-				<h3 class="text-sm font-semibold">Hit History</h3>
-				<span class="text-xs text-muted-foreground"
-					>{hits.length} {hits.length === 1 ? 'hit' : 'hits'}</span
+		{#each hits.slice(-50).reverse() as hit (hit.id)}<div>
+				<strong>#{hit.shotNumber}</strong><span>{hit.zone || 'Hit'}</span><span
+					>{hit.points ?? '—'}</span
+				><time datetime={new Date(hit.timestamp).toISOString()}
+					>{new Date(hit.timestamp).toLocaleTimeString([], {
+						hour: 'numeric',
+						minute: '2-digit',
+						second: '2-digit'
+					})}</time
 				>
-			</div>
-			<div class="max-h-[300px] space-y-1.5 overflow-y-auto">
-				{#each hits.slice().reverse() as hit (hit.id)}
-					<div
-						class="flex items-center justify-between rounded-lg bg-secondary/30 p-2 transition-colors hover:bg-secondary/50"
-					>
-						<div class="flex items-center gap-2">
-							<div
-								class="h-2 w-2 rounded-full {hit.zone === 'A'
-									? 'bg-success'
-									: hit.zone === 'C'
-										? 'bg-warning'
-										: hit.zone === 'D'
-											? 'bg-destructive'
-											: 'bg-muted-foreground'}"
-							></div>
-							<span class="text-xs font-medium">Zone {hit.zone || 'Miss'}</span>
-							{#if hit.points !== undefined}
-								<span class="text-xs text-muted-foreground">({hit.points} pts)</span>
-							{/if}
-						</div>
-						<span class="text-xs text-muted-foreground"
-							>{new Date(hit.timestamp).toLocaleTimeString()}</span
-						>
-					</div>
-				{/each}
-			</div>
-		</div>
-	{/if}
-</div>
+			</div>{/each}
+	</div>{/if}
+
+<style>
+	.hit-list {
+		max-height: 280px;
+		overflow: auto;
+		font-size: 0.8rem;
+		margin-bottom: 22px;
+	}
+	.hit-list > div {
+		display: grid;
+		grid-template-columns: 45px 1fr 50px 90px;
+		padding: 10px 0;
+		gap: 8px;
+		border-bottom: 1px solid #e4eaf2;
+	}
+	.hit-list-heading,
+	time {
+		color: #5b6d80;
+	}
+</style>
