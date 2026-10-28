@@ -91,3 +91,7 @@ Real training-laser testing is deferred until the laser is available. Software d
 ## High Noon
 
 Projector Mode also supports the [High Noon quick-draw game](high-noon.md), using the same calibration and shot pipeline with a browser-only Phaser display. Its laptop preview can simulate shots without camera hardware.
+
+## Duck Hunt Arcade
+
+Projector Mode also supports [Duck Hunt Arcade](duck-hunt.md): original grayscale marsh artwork, Single Duck and Two-Duck Choice, one shot per encounter, explicit READY pacing, and timestamped historical body-hitbox scoring. It reuses the same camera, calibration, shot channel and Phaser host. Laptop simulation works without the training laser.

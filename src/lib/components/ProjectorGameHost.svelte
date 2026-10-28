@@ -1,6 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
-	let { onReport, onError } = $props();
+	let { activity = 'high-noon', onReport, onError } = $props();
 	let root, runtime;
 	let loading = $state(true),
 		failure = $state('');
@@ -9,16 +9,23 @@
 	}
 	onMount(() => {
 		let disposed = false;
-		import('$lib/games/high-noon/runtime.js')
-			.then(async ({ createHighNoonRuntime }) => {
+		(activity === 'duck-hunt'
+			? import('$lib/games/duck-hunt/runtime.js')
+			: import('$lib/games/high-noon/runtime.js')
+		)
+			.then(async (module) => {
 				if (disposed) return;
-				runtime = createHighNoonRuntime({ parent: root, onReport, onError });
+				runtime = (module.createDuckHuntRuntime || module.createHighNoonRuntime)({
+					parent: root,
+					onReport,
+					onError
+				});
 				await runtime.initialize();
 				if (!disposed) loading = false;
 			})
 			.catch((error) => {
 				if (!disposed) {
-					failure = `High Noon could not load: ${error.message}`;
+					failure = `Game could not load: ${error.message}`;
 					onError(failure);
 				}
 			});
@@ -29,8 +36,8 @@
 	});
 </script>
 
-<div class="game-host" bind:this={root} aria-label="High Noon Phaser game"></div>
-{#if loading || failure}<p class="loading" role="status">{failure || 'Loading High Noon…'}</p>{/if}
+<div class="game-host" bind:this={root} aria-label={`${activity} Phaser game`}></div>
+{#if loading || failure}<p class="loading" role="status">{failure || 'Loading game…'}</p>{/if}
 
 <style>
 	.game-host {

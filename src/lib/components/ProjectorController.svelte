@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import DuckHuntController from '$lib/components/DuckHuntController.svelte';
 	import HighNoonController from '$lib/components/HighNoonController.svelte';
 	import { shotEvent } from '$lib/games/coordinates.js';
 	import { validGameReport } from '$lib/games/protocol.js';
@@ -36,11 +37,12 @@
 	let video, canvas;
 	let activity = $state('target'),
 		gameReport = $state(null);
+	let isGame = $derived(['high-noon', 'duck-hunt'].includes(activity));
 	let gameLive = $derived(
-		activity === 'high-noon' &&
+		isGame &&
 			gameReport &&
 			!gameReport.paused &&
-			['READY_DELAY', 'DRAWING'].includes(gameReport.phase)
+			['READY_DELAY', 'DRAWING', 'LAUNCH_DELAY', 'FLYING'].includes(gameReport.phase)
 	);
 	let cameras = $state([]),
 		selectedCamera = $state(''),
@@ -133,7 +135,7 @@
 	});
 
 	function gameCommand(action, payload = {}) {
-		if (!connected || activity !== 'high-noon' || !gameReport) return;
+		if (!connected || !isGame || !gameReport) return;
 		channel?.postMessage(
 			envelope(id, 'game-command', {
 				command: {
@@ -156,7 +158,7 @@
 		gameCommand('shot', { shot: shotEvent(point, source, metadata) });
 	}
 	function pause() {
-		if (activity === 'high-noon') gameCommand('pause');
+		if (isGame) gameCommand('pause');
 		if (session.status === 'running') session = { ...session, status: 'paused' };
 		filter.reset();
 	}
@@ -350,7 +352,11 @@
 			selectPoint(cursor);
 		}
 	}
-	function processPoint(raw, simulated = false) {
+	function processPoint(
+		raw,
+		simulated = false,
+		observedAt = performance.timeOrigin + performance.now()
+	) {
 		if (!calibration || !connected || !viewport || calibrating) return;
 		const result = evaluateCameraPoint(raw, calibration, target, viewport);
 		lastRaw = raw;
@@ -360,16 +366,18 @@
 			diagnostics = {
 				...diagnostics,
 				simulated: result
-					? activity === 'high-noon'
-						? `Mapped ${result.point.x.toFixed(3)}, ${result.point.y.toFixed(3)} to High Noon. See game results above.`
+					? isGame
+						? `Mapped ${result.point.x.toFixed(3)}, ${result.point.y.toFixed(3)} to the active game. See results above.`
 						: `Score ${result.score} at ${result.point.x.toFixed(3)}, ${result.point.y.toFixed(3)}`
 					: 'Outside calibrated region — ignored'
 			};
-		if (activity === 'high-noon') {
+		if (isGame) {
 			if (result)
 				routeGameShot(result.point, simulated ? 'simulated' : 'laser', {
 					camera: { deviceId: activeCamera, width, height, raw: { x: raw.x, y: raw.y } },
-					method: 'camera'
+					method: 'camera',
+					detectedAt: observedAt,
+					timestampKind: simulated ? 'simulation-click' : 'frame-observed'
 				});
 			return;
 		}
@@ -419,6 +427,7 @@
 		const context = canvas.getContext('2d', { willReadFrequently: true });
 		let candidates = [];
 		if (streaming) {
+			const observedAt = performance.timeOrigin + performance.now();
 			context.drawImage(video, 0, 0, width, height);
 			if (
 				!simulation &&
@@ -426,7 +435,7 @@
 				connected &&
 				calibration &&
 				validSettings(settings) &&
-				(activity === 'high-noon' ? gameLive : session.status === 'running')
+				(isGame ? gameLive : session.status === 'running')
 			) {
 				const pixels = context.getImageData(0, 0, width, height).data;
 				candidates = detectLaserDots(pixels, width, height, false, null, 100, null, settings);
@@ -438,7 +447,7 @@
 				const pulse = filter.update(usable, now, settings);
 				if (pulse) {
 					lastBlob = pulse.size;
-					processPoint(pulse);
+					processPoint(pulse, false, observedAt);
 				}
 			} else filter.reset();
 		} else {
@@ -518,8 +527,8 @@
 			channel.onmessage = ({ data }) => {
 				if (
 					isMessage(data, id, 'game-report') &&
-					activity === 'high-noon' &&
-					validGameReport(data.report)
+					isGame &&
+					validGameReport(data.report, activity)
 				) {
 					if (
 						data.report.lastMapping?.accepted &&
@@ -583,10 +592,16 @@
 	</p>
 	{#if error}<p class="notice" role="status">{error}</p>{/if}
 
-	<div class="workspace" class:game-layout={activity === 'high-noon'}>
+	<div class="workspace" class:game-layout={isGame}>
 		<div class="preview-column">
 			{#if activity === 'high-noon'}<HighNoonController
 					compact
+					report={gameReport}
+					{connected}
+					onCommand={gameCommand}
+					onShot={(point, metadata) => routeGameShot(point, 'simulated', metadata)}
+					onExit={() => changeActivity('target')}
+				/>{:else if activity === 'duck-hunt'}<DuckHuntController
 					report={gameReport}
 					{connected}
 					onCommand={gameCommand}
@@ -624,7 +639,7 @@
 						? ` · Includes ${session.simulated} simulated shots`
 						: ''}
 				</p>
-			{:else}<p>Camera input feeds High Noon. Game results appear above.</p>{/if}
+			{:else}<p>Camera input feeds the active game. Game results appear above.</p>{/if}
 			<details open>
 				<summary>Diagnostics</summary>
 				<dl>
@@ -644,9 +659,7 @@
 					<dd>
 						{simulation || synthetic
 							? 'Simulation — laser processing disabled'
-							: (activity === 'high-noon' ? gameLive : session.status === 'running') &&
-								  connected &&
-								  calibration
+							: (isGame ? gameLive : session.status === 'running') && connected && calibration
 								? 'Active · red or green laser'
 								: 'Inactive'}
 					</dd>
@@ -683,7 +696,7 @@
 						onchange={(event) => changeActivity(event.target.value)}
 						><option value="target">Static bullseye</option><option value="high-noon"
 							>High Noon · Quick draw</option
-						></select
+						><option value="duck-hunt">Duck Hunt · Marsh arcade</option></select
 					></label
 				>
 				<button class="btn btn-primary" disabled={!supported} onclick={openProjector}
@@ -884,14 +897,15 @@
 						}}
 					/> Simulation: click camera preview (disables laser detection)</label
 				>
-				<label class="check-row"
-					><input type="checkbox" bind:checked={countSimulation} /> Intentionally count simulated shots
-					in session statistics</label
-				>
+				{#if !isGame}<label class="check-row"
+						><input type="checkbox" bind:checked={countSimulation} /> Intentionally count simulated shots
+						in session statistics</label
+					>{/if}
 				<button class="btn" onclick={useSynthetic}>Use synthetic camera (no hardware)</button>
 				<p class="small">
-					Simulation uses the same homography and scoring pipeline. By default it only reports a
-					result here. Counting requires an active session and the checkbox above.
+					{isGame
+						? 'Camera-preview clicks use the same calibration and game scoring pipeline. Game results are labeled simulated and never saved to laser statistics.'
+						: 'Simulation uses the same homography and scoring pipeline. By default it only reports a result here. Counting requires an active session and the checkbox above.'}
 				</p>
 				{#if diagnostics.simulated}<p role="status">SIMULATION: {diagnostics.simulated}</p>{/if}
 			</details>

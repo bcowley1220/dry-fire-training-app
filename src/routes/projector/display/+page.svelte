@@ -4,7 +4,8 @@
 	import { CORNERS, AREA, DEFAULT_TARGET, targetGeometry } from '$lib/projector/geometry.js';
 	import { emptySession, accuracy } from '$lib/projector/session.js';
 	import { channelName, envelope, isMessage, validDisplayState } from '$lib/projector/protocol.js';
-	let host, activeChannel, controllerId;
+	let host = $state();
+	let activeChannel, controllerId;
 	function gameReport(report) {
 		activeChannel?.postMessage(envelope(controllerId, 'game-report', { report }));
 	}
@@ -35,7 +36,10 @@
 				lastState = Date.now();
 				connected = true;
 			}
-			if (isMessage(data, id, 'game-command') && state.activity === 'high-noon')
+			if (
+				isMessage(data, id, 'game-command') &&
+				['high-noon', 'duck-hunt'].includes(state.activity)
+			)
 				host?.command(data.command);
 			if (isMessage(data, id, 'disconnect')) {
 				lastState = 0;
@@ -75,16 +79,19 @@
 
 <svelte:head><title>Projector display | Dry-Fire Trainer</title></svelte:head>
 <div class="projection">
-	{#if state.activity === 'high-noon' && connected}
+	{#if ['high-noon', 'duck-hunt'].includes(state.activity) && connected}
 		<div class="game-layer" style:visibility={state.calibrating ? 'hidden' : 'visible'}>
-			<ProjectorGameHost
-				bind:this={host}
-				onReport={gameReport}
-				onError={(message) => (error = message)}
-			/>
+			{#key state.activity}<ProjectorGameHost
+					activity={state.activity}
+					bind:this={host}
+					onReport={gameReport}
+					onError={(message) => (error = message)}
+				/>{/key}
 		</div>
 	{/if}
-	{#if state.activity !== 'high-noon' || state.calibrating || !connected}<div class="hud">
+	{#if !['high-noon', 'duck-hunt'].includes(state.activity) || state.calibrating || !connected}<div
+			class="hud"
+		>
 			<strong
 				>{connected
 					? state.calibrating
@@ -100,7 +107,9 @@
 		</div>
 	{/if}
 	<svg
-		class:inactive={state.activity === 'high-noon' && !state.calibrating && connected}
+		class:inactive={['high-noon', 'duck-hunt'].includes(state.activity) &&
+			!state.calibrating &&
+			connected}
 		viewBox={`0 0 ${viewport.width} ${viewport.height}`}
 		aria-label="Projected training target"
 	>
@@ -126,7 +135,7 @@
 					>
 				</g>
 			{/each}
-		{:else if connected && state.activity !== 'high-noon'}
+		{:else if connected && !['high-noon', 'duck-hunt'].includes(state.activity)}
 			{#each Array.from({ length: 10 }, (_, i) => 10 - i) as ring (ring)}
 				<circle
 					cx={geometry.x * viewport.width}
@@ -139,7 +148,11 @@
 			{/each}
 		{/if}
 	</svg>
-	<footer class:game-footer={state.activity === 'high-noon' && !state.calibrating && connected}>
+	<footer
+		class:game-footer={['high-noon', 'duck-hunt'].includes(state.activity) &&
+			!state.calibrating &&
+			connected}
+	>
 		<span
 			>{error ||
 				(state.calibrating

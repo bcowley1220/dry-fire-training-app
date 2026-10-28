@@ -26,7 +26,8 @@ export function validDisplayState(state) {
 	return (
 		state &&
 		typeof state.calibrating === 'boolean' &&
-		(state.activity === undefined || ['target', 'high-noon'].includes(state.activity)) &&
+		(state.activity === undefined ||
+			['target', 'high-noon', 'duck-hunt'].includes(state.activity)) &&
 		['idle', 'running', 'paused'].includes(state.session?.status) &&
 		['shots', 'hits', 'score', 'simulated'].every(
 			(key) => Number.isInteger(state.session[key]) && state.session[key] >= 0
