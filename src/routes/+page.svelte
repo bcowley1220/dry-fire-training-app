@@ -10,6 +10,7 @@
 	import TrainingLogPanel from '$lib/components/TrainingLogPanel.svelte';
 	import TargetSetup from '$lib/components/TargetSetup.svelte';
 	import Header from '$lib/components/Header.svelte';
+	import ProjectorController from '$lib/components/ProjectorController.svelte';
 	import CameraStage from '$lib/components/CameraStage.svelte';
 	import HitsList from '$lib/components/HitsList.svelte';
 	import { addRep, createSession } from '$lib/storage/trainingLog.js';
@@ -144,7 +145,7 @@
 
 	function navigate(nextView) {
 		if (shotTimerActive || autoNextCountdown !== null) return;
-		if (nextView === 'history') stopCamera();
+		if (nextView !== 'practice') stopCamera();
 		view = nextView;
 	}
 
@@ -2031,6 +2032,7 @@
 			>
 		</p>{/if}
 	{#if trainingLogError}<p class="notice notice-error" role="alert">{trainingLogError}</p>{/if}
+	{#if view === 'projector'}<ProjectorController />{/if}
 	{#if view === 'history'}
 		<div class="page-heading">
 			<div>

@@ -16,6 +16,8 @@ export const MIN_LASER_SIZE = 2; // Require at least 2 pixels to reduce noise
 export const MIN_COLOR_DOMINANCE = 30; // Minimum difference between dominant color and other channels
 export const MIN_BRIGHTNESS = 100; // Minimum total brightness (r+g+b) to avoid dim false positives
 
+// Optional projector settings tune selected-color detection and return blob sizes.
+// Omitting options preserves the practice mode's red/green thresholds and hit shape.
 export function detectLaserDots(
 	pixels,
 	width,
@@ -23,9 +25,21 @@ export function detectLaserDots(
 	debugMode = false,
 	backgroundSnapshot = null,
 	backgroundThreshold = 100,
-	roi = null
+	roi = null,
+	options = null
 ) {
 	const hits = [];
+	const redThreshold = options
+		? { ...RED_THRESHOLD, r: options.brightness ?? RED_THRESHOLD.r }
+		: RED_THRESHOLD;
+	const greenThreshold = options
+		? { ...GREEN_THRESHOLD, g: options.brightness ?? GREEN_THRESHOLD.g }
+		: GREEN_THRESHOLD;
+	const projectGreen = options?.color === 'green';
+	const minBrightness = options?.minBrightness ?? MIN_BRIGHTNESS;
+	const dominance = options?.dominance ?? MIN_COLOR_DOMINANCE;
+	const minSize = options?.minSize ?? MIN_LASER_SIZE;
+	const maxSize = options?.maxSize ?? Infinity;
 	const visited = new Set();
 	const debugPixels = debugMode ? [] : null; // Store pixels that match criteria for debug overlay
 
@@ -56,15 +70,19 @@ export function detectLaserDots(
 			}
 
 			// Skip dim pixels to avoid false positives
-			if (brightness < MIN_BRIGHTNESS) continue;
+			if (brightness < minBrightness) continue;
 
 			// Check for red laser - require both threshold match AND significant color dominance
-			const redMatch = r > RED_THRESHOLD.r && g < RED_THRESHOLD.g && b < RED_THRESHOLD.b;
-			const redDominant = r > g && r > b && r > RED_THRESHOLD.r;
+			const redMatch = r > redThreshold.r && g < redThreshold.g && b < redThreshold.b;
+			const redDominant = r > g && r > b && r > redThreshold.r;
 			const redDominanceDiff = Math.min(r - g, r - b); // How much more red than other channels
 
 			// Require strict threshold match OR (dominant with significant difference)
-			if (redMatch || (redDominant && redDominanceDiff >= MIN_COLOR_DOMINANCE)) {
+			if (
+				options
+					? !projectGreen && redDominant && redDominanceDiff >= dominance
+					: redMatch || (redDominant && redDominanceDiff >= dominance)
+			) {
 				if (debugMode && debugPixels) {
 					debugPixels.push({
 						x,
@@ -77,24 +95,33 @@ export function detectLaserDots(
 						dominant: redDominant
 					});
 				}
-				const cluster = findCluster(x, y, pixels, width, height, 'red', visited);
-				if (cluster && cluster.size >= MIN_LASER_SIZE) {
+				const cluster = findCluster(x, y, pixels, width, height, 'red', visited, options);
+				if (cluster && cluster.size >= minSize && cluster.size <= maxSize) {
 					if (debugMode) {
 						console.log(
 							`Red laser detected at (${cluster.centerX}, ${cluster.centerY}), size: ${cluster.size}, RGB: (${r}, ${g}, ${b})`
 						);
 					}
-					hits.push({ x: cluster.centerX, y: cluster.centerY, color: 'red' });
+					hits.push({
+						x: cluster.centerX,
+						y: cluster.centerY,
+						color: 'red',
+						...(options ? { size: cluster.size } : {})
+					});
 				}
 			}
 			// Check for green laser - require both threshold match AND significant color dominance
-			else {
-				const greenMatch = g > GREEN_THRESHOLD.g && r < GREEN_THRESHOLD.r && b < GREEN_THRESHOLD.b;
-				const greenDominant = g > r && g > b && g > GREEN_THRESHOLD.g;
+			else if (!options || projectGreen) {
+				const greenMatch = g > greenThreshold.g && r < greenThreshold.r && b < greenThreshold.b;
+				const greenDominant = g > r && g > b && g > greenThreshold.g;
 				const greenDominanceDiff = Math.min(g - r, g - b); // How much more green than other channels
 
 				// Require strict threshold match OR (dominant with significant difference)
-				if (greenMatch || (greenDominant && greenDominanceDiff >= MIN_COLOR_DOMINANCE)) {
+				if (
+					options
+						? greenDominant && greenDominanceDiff >= dominance
+						: greenMatch || (greenDominant && greenDominanceDiff >= dominance)
+				) {
 					if (debugMode && debugPixels) {
 						debugPixels.push({
 							x,
@@ -107,14 +134,19 @@ export function detectLaserDots(
 							dominant: greenDominant
 						});
 					}
-					const cluster = findCluster(x, y, pixels, width, height, 'green', visited);
-					if (cluster && cluster.size >= MIN_LASER_SIZE) {
+					const cluster = findCluster(x, y, pixels, width, height, 'green', visited, options);
+					if (cluster && cluster.size >= minSize && cluster.size <= maxSize) {
 						if (debugMode) {
 							console.log(
 								`Green laser detected at (${cluster.centerX}, ${cluster.centerY}), size: ${cluster.size}, RGB: (${r}, ${g}, ${b})`
 							);
 						}
-						hits.push({ x: cluster.centerX, y: cluster.centerY, color: 'green' });
+						hits.push({
+							x: cluster.centerX,
+							y: cluster.centerY,
+							color: 'green',
+							...(options ? { size: cluster.size } : {})
+						});
 					}
 				}
 			}
@@ -129,21 +161,25 @@ export function detectLaserDots(
 	return hits;
 }
 
-function findCluster(startX, startY, pixels, width, height, color, visited) {
+function findCluster(startX, startY, pixels, width, height, color, visited, options = null) {
 	const cluster = [];
 	const queue = [[startX, startY]];
 	const key = `${startX},${startY}`;
 	if (visited.has(key)) return null;
 	visited.add(key);
 
-	const threshold = color === 'red' ? RED_THRESHOLD : GREEN_THRESHOLD;
+	const threshold =
+		color === 'red'
+			? { ...RED_THRESHOLD, r: options?.brightness ?? RED_THRESHOLD.r }
+			: { ...GREEN_THRESHOLD, g: options?.brightness ?? GREEN_THRESHOLD.g };
 	let minX = startX,
 		maxX = startX,
 		minY = startY,
 		maxY = startY;
 
-	while (queue.length > 0) {
-		const [x, y] = queue.shift();
+	let queueIndex = 0;
+	while (queueIndex < queue.length) {
+		const [x, y] = queue[queueIndex++];
 		if (x < 0 || x >= width || y < 0 || y >= height) continue;
 
 		const idx = (y * width + x) * 4;
@@ -159,15 +195,19 @@ function findCluster(startX, startY, pixels, width, height, color, visited) {
 			const dominantMatch = r > g && r > b && r > threshold.r;
 			const dominanceDiff = Math.min(r - g, r - b);
 			isMatch =
-				(strictMatch || (dominantMatch && dominanceDiff >= MIN_COLOR_DOMINANCE)) &&
-				brightness >= MIN_BRIGHTNESS;
+				(options
+					? dominantMatch && dominanceDiff >= (options.dominance ?? MIN_COLOR_DOMINANCE)
+					: strictMatch || (dominantMatch && dominanceDiff >= MIN_COLOR_DOMINANCE)) &&
+				brightness >= (options?.minBrightness ?? MIN_BRIGHTNESS);
 		} else {
 			const strictMatch = g > threshold.g && r < threshold.r && b < threshold.b;
 			const dominantMatch = g > r && g > b && g > threshold.g;
 			const dominanceDiff = Math.min(g - r, g - b);
 			isMatch =
-				(strictMatch || (dominantMatch && dominanceDiff >= MIN_COLOR_DOMINANCE)) &&
-				brightness >= MIN_BRIGHTNESS;
+				(options
+					? dominantMatch && dominanceDiff >= (options.dominance ?? MIN_COLOR_DOMINANCE)
+					: strictMatch || (dominantMatch && dominanceDiff >= MIN_COLOR_DOMINANCE)) &&
+				brightness >= (options?.minBrightness ?? MIN_BRIGHTNESS);
 		}
 
 		if (isMatch) {
@@ -193,8 +233,8 @@ function findCluster(startX, startY, pixels, width, height, color, visited) {
 				const nKey = `${nx},${ny}`;
 				if (
 					!visited.has(nKey) &&
-					Math.abs(nx - startX) < CLUSTER_RADIUS &&
-					Math.abs(ny - startY) < CLUSTER_RADIUS
+					(options ||
+						(Math.abs(nx - startX) < CLUSTER_RADIUS && Math.abs(ny - startY) < CLUSTER_RADIUS))
 				) {
 					visited.add(nKey);
 					queue.push([nx, ny]);
