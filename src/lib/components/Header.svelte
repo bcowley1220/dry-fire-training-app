@@ -34,6 +34,12 @@
 			onclick={() => dispatch('navigate', 'history')}
 			><Icon name="history" size={18} /><span>History</span></button
 		>
+		<button
+			class:current={view === 'projector'}
+			aria-current={view === 'projector' ? 'page' : undefined}
+			disabled={busy}
+			onclick={() => dispatch('navigate', 'projector')}><span>Projector Mode</span></button
+		>
 	</nav>
 	<button
 		class="icon-button help-button"
@@ -131,6 +137,17 @@
 		}
 		.help-button {
 			display: none;
+		}
+	}
+	@media (max-width: 500px) {
+		.app-header {
+			flex-wrap: wrap;
+		}
+		nav {
+			order: 3;
+			width: 100%;
+			margin-left: 0;
+			justify-content: space-between;
 		}
 	}
 	@media (max-width: 360px) {

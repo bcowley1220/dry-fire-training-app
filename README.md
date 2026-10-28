@@ -4,6 +4,16 @@ A web-based dry-fire training application that uses your device's camera to dete
 
 This is just a demo version to do proof of concept testing.
 
+## Projector Mode
+
+Open **Projector Mode** in the navigation to use a local webcam with a separate grayscale projector display. Includes four-corner perspective calibration, a configurable bullseye, scoring, detection tuning, diagnostics, and explicit developer simulation. No backend or new dependencies are required.
+
+See [Projector Mode setup, architecture, and hardware test checklist](docs/projector-mode.md). Real laser/projector hardware validation remains required.
+
+### High Noon
+
+Select **High Noon · Quick draw** in Projector Mode for a grayscale Phaser 3 Western game with an animated cowboy, configurable draw time, torso/hip scoring, manual readiness between rounds, and camera-free simulation. See the [High Noon guide](docs/high-noon.md) for launch steps, timing architecture, tests, assets and limitations.
+
 ## Features
 
 ### 🎯 Camera-Based Laser Detection
